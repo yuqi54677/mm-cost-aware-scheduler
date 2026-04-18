@@ -1,0 +1,3 @@
+{"arrival_time": 0.0, "dataset": "generated-demo", "image_path": null, "prompt": "aaa", "request_id": "0", "source": "sample"}
+{"arrival_time": 0.25, "dataset": "generated-demo", "image_path": null, "prompt": "bbbb", "request_id": "1", "source": "sample"}
+{"arrival_time": 0.5, "dataset": "generated-demo", "image_path": null, "prompt": "ccccc", "request_id": "2", "source": "sample"}
