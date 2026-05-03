@@ -18,7 +18,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mmserve_skeleton.backend import MockBackend
+from mmserve_skeleton.backend import MockBackend, VLLMBackend
 from mmserve_skeleton.logging import JSONLLogWriter
 from mmserve_skeleton.pipeline import ServingPipeline
 
@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workload", required=True, help="Input workload JSONL")
     parser.add_argument("--log", default="logs/run.jsonl", help="Output request log JSONL")
     parser.add_argument("--reset-log", action="store_true")
+    parser.add_argument("--backend", choices=["mock", "vllm"], default="mock")
+    parser.add_argument("--model", default="Qwen/Qwen2-VL-7B-Instruct")
+    parser.add_argument("--max-tokens", type=int, default=128)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--max-batch-size", type=int, default=1)
     return parser.parse_args()
 
 
@@ -81,10 +86,21 @@ def main() -> None:
     if args.reset_log and log_path.exists():
         log_path.unlink()
 
+    backend = (
+        VLLMBackend(
+            model=args.model,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+        )
+        if args.backend == "vllm"
+        else MockBackend()
+    )
+
     pipeline = ServingPipeline(
-        backend=MockBackend(),
+        backend=backend,
         log_writer=JSONLLogWriter(log_path),
     )
+    pipeline.scheduler.max_batch_size = args.max_batch_size
 
     run_start = time.time()
     for record in load_workload(args.workload):

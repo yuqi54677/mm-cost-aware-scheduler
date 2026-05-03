@@ -12,7 +12,7 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -41,11 +41,29 @@ def numeric(records: list[dict], key: str) -> list[float]:
 
 
 def print_stats(label: str, values: list[float]) -> None:
-    """Print count, mean, min, and max for one metric."""
+    """Print count, mean, p50, p95, min, and max for one metric."""
     if not values:
         print(f"{label}: n=0")
         return
-    print(f"{label}: n={len(values)} mean={mean(values):.4f} min={min(values):.4f} max={max(values):.4f}")
+    ordered = sorted(values)
+    p95_index = min(len(ordered) - 1, int(0.95 * (len(ordered) - 1)))
+    print(
+        f"{label}: n={len(values)} mean={mean(values):.4f} "
+        f"p50={median(values):.4f} p95={ordered[p95_index]:.4f} "
+        f"min={min(values):.4f} max={max(values):.4f}"
+    )
+
+
+def throughput(records: list[dict]) -> float:
+    """Compute completed requests per second over the observed run window."""
+    completions = numeric(records, "completion_time")
+    arrivals = numeric(records, "arrival_time")
+    if not completions or not arrivals:
+        return 0.0
+    duration = max(completions) - min(arrivals)
+    if duration <= 0:
+        return float(len(records))
+    return len(records) / duration
 
 
 def main() -> None:
@@ -53,6 +71,7 @@ def main() -> None:
     args = parse_args()
     records = load_records(args.log)
     print(f"requests: {len(records)}")
+    print(f"throughput_requests_per_second: {throughput(records):.4f}")
     print_stats("latency_seconds", numeric(records, "latency_seconds"))
     print_stats("ttft_seconds", numeric(records, "ttft_seconds"))
     print_stats("queue_wait_seconds", numeric(records, "queue_wait_seconds"))
