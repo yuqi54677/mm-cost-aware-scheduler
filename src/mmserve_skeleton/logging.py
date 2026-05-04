@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from mmserve_skeleton.models import MMRequest
+from .models import MMRequest
 
 
 class JSONLLogWriter:

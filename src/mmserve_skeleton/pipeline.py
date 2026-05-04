@@ -14,13 +14,13 @@ from __future__ import annotations
 import time
 import uuid
 
-from mmserve_skeleton.backend import Backend
-from mmserve_skeleton.batching import BatchBuilder
-from mmserve_skeleton.logging import JSONLLogWriter
-from mmserve_skeleton.models import MMRequest
-from mmserve_skeleton.preprocessing import MetadataExtractor
-from mmserve_skeleton.queue import RequestQueue
-from mmserve_skeleton.scheduler import FIFOScheduler
+from .backend import Backend
+from .batching import BatchBuilder
+from .logging import JSONLLogWriter
+from .models import MMRequest
+from .preprocessing import MetadataExtractor
+from .queue import RequestQueue
+from .scheduler import FIFOScheduler
 
 
 class ServingPipeline:

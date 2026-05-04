@@ -3,14 +3,18 @@
 The scheduler will eventually use request features such as prompt length, image
 size, and resolution bucket to estimate serving cost. This module keeps the
 feature extraction intentionally lightweight so it can run before queueing.
+
+DeepFeatureExtractor is optional and uses CLIP for image/text embeddings. It is
+separate from MetadataExtractor so the cheap path stays fast.
 """
 
 from __future__ import annotations
 
+import os
 import struct
 from pathlib import Path
 
-from mmserve_skeleton.models import MMRequest
+from .models import MMRequest
 
 
 class MetadataExtractor:
@@ -91,3 +95,64 @@ class MetadataExtractor:
         if pixels <= 1024 * 1024:
             return "medium"
         return "large"
+
+
+class DeepFeatureExtractor:
+    """CLIP-based image and text embedding extractor.
+
+    Embeddings are stored on request.features.image_embedding and
+    request.features.text_embedding as normalized float lists. They are kept
+    in memory only and are not written to JSONL logs.
+
+    Requires: pip install transformers torch pillow
+    """
+
+    def __init__(self, model_name: str = "openai/clip-vit-base-patch32") -> None:
+        try:
+            from transformers import CLIPModel, CLIPProcessor
+        except ImportError as exc:
+            raise RuntimeError(
+                "Install transformers and torch to use DeepFeatureExtractor: "
+                "pip install transformers torch"
+            ) from exc
+        self._processor = CLIPProcessor.from_pretrained(model_name)
+        self._model = CLIPModel.from_pretrained(model_name)
+        self._model.eval()
+
+    def extract_image_embedding(self, image_path: str) -> list[float] | None:
+        """Return a normalized CLIP image embedding as a Python list."""
+        try:
+            import torch
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                loaded = img.convert("RGB")
+            inputs = self._processor(images=loaded, return_tensors="pt")
+            with torch.no_grad():
+                embedding = self._model.get_image_features(**inputs)
+                embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+            return embedding.squeeze().tolist()
+        except Exception:
+            return None
+
+    def extract_text_embedding(self, text: str) -> list[float] | None:
+        """Return a normalized CLIP text embedding as a Python list."""
+        try:
+            import torch
+
+            inputs = self._processor(
+                text=[text], return_tensors="pt", truncation=True, max_length=77
+            )
+            with torch.no_grad():
+                embedding = self._model.get_text_features(**inputs)
+                embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+            return embedding.squeeze().tolist()
+        except Exception:
+            return None
+
+    def enrich(self, request: MMRequest) -> MMRequest:
+        """Attach CLIP embeddings to request.features in-place."""
+        request.features.text_embedding = self.extract_text_embedding(request.prompt)
+        if request.image_path and Path(request.image_path).exists():
+            request.features.image_embedding = self.extract_image_embedding(request.image_path)
+        return request

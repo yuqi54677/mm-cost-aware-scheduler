@@ -37,16 +37,10 @@ from typing import Any
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse assembly configuration.
-
-    Input:
-        CLI flags that describe where to write normalized records and how many
-        examples to keep from each raw dataset.
-    Output:
-        argparse.Namespace consumed by main().
-    """
+    """Parse assembly configuration."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/normalized/assembled.jsonl")
+    parser.add_argument("--image-dir", default="data/images", help="Directory to save downloaded images")
     parser.add_argument("--limit-per-dataset", type=int, default=100)
     parser.add_argument("--include", default="coco,textvqa,mmmu")
     parser.add_argument("--split", default="validation")
@@ -82,79 +76,82 @@ def stringify_answer(answer: Any) -> str | None:
     return str(answer)
 
 
-def local_image_path(value: Any) -> str | None:
-    """Convert common image representations into a local path when possible."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    filename = getattr(value, "filename", None)
-    return str(filename) if filename else None
+def save_pil_image(image: Any, image_dir: Path, filename: str) -> str | None:
+    """Save a PIL Image object to disk and return the local path.
 
-
-def load_coco_samples(limit: int, split: str) -> Iterable[dict[str, Any]]:
-    """Load and normalize COCO-style samples.
-
-    Input:
-        limit: maximum number of COCO examples to emit.
-    Output:
-        Iterable of records matching the normalized schema above.
-
-    Implementation note:
-        Put the dataset-specific Hugging Face/local-file loading here, then call
-        normalize_record(...) for each raw row.
+    HuggingFace dataset image fields are in-memory PIL Image objects with no
+    filename. This function persists them so the pipeline can load them later.
+    Returns None if image is already a string path or cannot be saved.
     """
+    if image is None:
+        return None
+    if isinstance(image, str):
+        return image
+
+    # Already has a filename (e.g. a file-backed PIL image)
+    filename_attr = getattr(image, "filename", None)
+    if filename_attr:
+        return str(filename_attr)
+
+    try:
+        from PIL import Image as PILImage
+
+        if isinstance(image, PILImage.Image):
+            image_dir.mkdir(parents=True, exist_ok=True)
+            dest = image_dir / filename
+            image.convert("RGB").save(dest)
+            return str(dest)
+    except Exception:
+        pass
+    return None
+
+
+def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+    """Load and normalize COCO-style samples."""
     raw = load_hf_dataset("lmms-lab/COCO-Caption2017", split)
     for index, row in enumerate(raw):
         if index >= limit:
             break
         prompt = "Describe the image in detail."
         answer = first_present(row, ["caption", "captions", "answer"])
+        raw_image = first_present(row, ["image", "image_path", "file_name"])
+        image_path = save_pil_image(raw_image, image_dir / "coco", f"{split}_{index}.jpg")
         yield normalize_record(
             sample_id=f"coco-{split}-{index}",
             dataset="coco",
             source=split,
             prompt=prompt,
-            image_path=local_image_path(first_present(row, ["image", "image_path", "file_name"])),
+            image_path=image_path,
             answer=stringify_answer(answer),
             category="captioning",
             metadata={"raw_keys": sorted(row.keys())},
         )
 
 
-def load_textvqa_samples(limit: int, split: str) -> Iterable[dict[str, Any]]:
-    """Load and normalize TextVQA/OCR-heavy samples.
-
-    Input:
-        limit: maximum number of TextVQA examples to emit.
-    Output:
-        Iterable of records matching the normalized schema.
-    """
+def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+    """Load and normalize TextVQA/OCR-heavy samples."""
     raw = load_hf_dataset("lmms-lab/TextVQA", split)
     for index, row in enumerate(raw):
         if index >= limit:
             break
         question = first_present(row, ["question", "prompt"], "Read the visible text and answer.")
+        raw_image = first_present(row, ["image", "image_path"])
+        sample_id = str(first_present(row, ["question_id", "id"], f"textvqa-{split}-{index}"))
+        image_path = save_pil_image(raw_image, image_dir / "textvqa", f"{split}_{index}.jpg")
         yield normalize_record(
-            sample_id=str(first_present(row, ["question_id", "id"], f"textvqa-{split}-{index}")),
+            sample_id=sample_id,
             dataset="textvqa",
             source=split,
             prompt=str(question),
-            image_path=local_image_path(first_present(row, ["image", "image_path"])),
+            image_path=image_path,
             answer=stringify_answer(first_present(row, ["answers", "answer"])),
             category="ocr",
             metadata={"raw_keys": sorted(row.keys())},
         )
 
 
-def load_mmmu_samples(limit: int, split: str) -> Iterable[dict[str, Any]]:
-    """Load and normalize MMMU/reasoning-heavy samples.
-
-    Input:
-        limit: maximum number of MMMU examples to emit.
-    Output:
-        Iterable of records matching the normalized schema.
-    """
+def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+    """Load and normalize MMMU/reasoning-heavy samples."""
     raw = load_hf_dataset("MMMU/MMMU", split)
     for index, row in enumerate(raw):
         if index >= limit:
@@ -163,12 +160,15 @@ def load_mmmu_samples(limit: int, split: str) -> Iterable[dict[str, Any]]:
         options = first_present(row, ["options", "choices"], None)
         if options:
             question = f"{question}\nOptions: {options}"
+        raw_image = first_present(row, ["image_1", "image", "image_path"])
+        sample_id = str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{index}"))
+        image_path = save_pil_image(raw_image, image_dir / "mmmu", f"{split}_{index}.jpg")
         yield normalize_record(
-            sample_id=str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{index}")),
+            sample_id=sample_id,
             dataset="mmmu",
             source=split,
             prompt=str(question),
-            image_path=local_image_path(first_present(row, ["image", "image_1", "image_path"])),
+            image_path=image_path,
             answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
             category=str(first_present(row, ["subject", "category"], "reasoning")),
             metadata={"raw_keys": sorted(row.keys())},
@@ -186,13 +186,7 @@ def normalize_record(
     category: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create one normalized local dataset record.
-
-    Input:
-        Dataset-specific values extracted by a loader function.
-    Output:
-        A common JSON-serializable record for create_workload.py.
-    """
+    """Create one normalized local dataset record."""
     return {
         "id": sample_id,
         "dataset": dataset,
@@ -209,15 +203,9 @@ def iter_normalized_records(
     dataset_names: list[str],
     limit_per_dataset: int,
     split: str,
+    image_dir: Path,
 ) -> Iterable[dict[str, Any]]:
-    """Dispatch to each dataset loader and yield normalized records.
-
-    Input:
-        dataset_names: dataset keys requested by the user.
-        limit_per_dataset: maximum examples per dataset.
-    Output:
-        Combined stream of normalized records.
-    """
+    """Dispatch to each dataset loader and yield normalized records."""
     loaders = {
         "coco": load_coco_samples,
         "textvqa": load_textvqa_samples,
@@ -226,18 +214,11 @@ def iter_normalized_records(
     for name in dataset_names:
         if name not in loaders:
             raise ValueError(f"Unknown dataset '{name}'. Available: {', '.join(sorted(loaders))}")
-        yield from loaders[name](limit_per_dataset, split)
+        yield from loaders[name](limit_per_dataset, split, image_dir)
 
 
 def write_jsonl(records: Iterable[dict[str, Any]], output_path: str | Path) -> int:
-    """Write normalized records to disk.
-
-    Input:
-        records: normalized dataset records.
-        output_path: JSONL destination consumed by create_workload.py.
-    Output:
-        Number of records written.
-    """
+    """Write normalized records to disk."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
@@ -251,12 +232,14 @@ def write_jsonl(records: Iterable[dict[str, Any]], output_path: str | Path) -> i
 def main() -> None:
     """Assemble selected datasets into a normalized local JSONL file."""
     args = parse_args()
+    image_dir = Path(args.image_dir)
     dataset_names = [name.strip() for name in args.include.split(",") if name.strip()]
     count = write_jsonl(
-        iter_normalized_records(dataset_names, args.limit_per_dataset, args.split),
+        iter_normalized_records(dataset_names, args.limit_per_dataset, args.split, image_dir),
         args.output,
     )
     print(f"Wrote {count} normalized records to {args.output}")
+    print(f"Images saved under {image_dir}/")
 
 
 if __name__ == "__main__":
