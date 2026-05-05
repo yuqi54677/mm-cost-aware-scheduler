@@ -133,7 +133,7 @@ def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
     for index, row in enumerate(raw):
         if index >= limit:
             break
-        prompt = "Describe the image in detail."
+        prompt = add_qwen_vision_tokens("Describe the image in detail.")
         answer = first_present(row, ["caption", "captions", "answer"])
         raw_image = first_present(row, ["image", "image_path", "file_name"])
         image_path = save_pil_image(raw_image, image_dir / "coco", f"{split}_{index}.jpg")
@@ -163,7 +163,7 @@ def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[di
             sample_id=sample_id,
             dataset="textvqa",
             source=split,
-            prompt=str(question),
+            prompt=add_qwen_vision_tokens(str(question)),
             image_path=image_path,
             answer=stringify_answer(first_present(row, ["answers", "answer"])),
             category="ocr",
@@ -207,7 +207,7 @@ def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
                 sample_id=sample_id,
                 dataset="mmmu",
                 source=split,
-                prompt=str(question),
+                prompt=add_qwen_vision_tokens(str(question)),
                 image_path=image_path,
                 answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
                 category=config,
@@ -215,6 +215,9 @@ def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
             )
             collected += 1
 
+
+def add_qwen_vision_tokens(prompt: str) -> str:
+    return f"<|vision_start|><|image_pad|><|vision_end|>\n{prompt}"
 
 def normalize_record(
     *,
@@ -287,7 +290,7 @@ def iter_demo_records(dataset_names: list[str], limit_per_dataset: int, split: s
                 sample_id=f"demo-{dataset}-{split}-{index}",
                 dataset=dataset,
                 source=f"demo-{split}",
-                prompt=prompt,
+                prompt=add_qwen_vision_tokens(prompt),
                 image_path=None,
                 answer=answer,
                 category=category,
