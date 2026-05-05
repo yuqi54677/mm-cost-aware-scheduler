@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from mmserve_skeleton.backend import MockBackend, VLLMBackend
 from mmserve_skeleton.logging import JSONLLogWriter
 from mmserve_skeleton.pipeline import ServingPipeline
+from mmserve_skeleton.scheduler import FIFOScheduler, GMAXScheduler, LengthOnlyScheduler
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-batch-size", type=int, default=1)
+    parser.add_argument("--scheduler", choices=["fifo", "length-only", "gmax"], default="fifo")
+    parser.add_argument("--gmax-window-size", type=int, default=None)
     return parser.parse_args()
 
 
@@ -79,6 +82,18 @@ def submit_record(pipeline: ServingPipeline, record: dict[str, Any], arrival_tim
     )
 
 
+def build_scheduler(args: argparse.Namespace):
+    """Create the requested scheduler baseline."""
+    if args.scheduler == "length-only":
+        return LengthOnlyScheduler(max_batch_size=args.max_batch_size)
+    if args.scheduler == "gmax":
+        return GMAXScheduler(
+            max_batch_size=args.max_batch_size,
+            window_size=args.gmax_window_size,
+        )
+    return FIFOScheduler(max_batch_size=args.max_batch_size)
+
+
 def main() -> None:
     """Replay every workload request through the local mock serving pipeline."""
     args = parse_args()
@@ -99,8 +114,8 @@ def main() -> None:
     pipeline = ServingPipeline(
         backend=backend,
         log_writer=JSONLLogWriter(log_path),
+        scheduler=build_scheduler(args),
     )
-    pipeline.scheduler.max_batch_size = args.max_batch_size
 
     run_start = time.time()
     for record in load_workload(args.workload):

@@ -33,6 +33,9 @@ class RequestFeatures:
     image_height: int | None = None
     resolution_bucket: str | None = None
     num_images: int = 0
+    image_entropy: float | None = None
+    edge_density: float | None = None
+    predicted_category: str | None = None
     predicted_prefill_cost: float | None = None
     predicted_output_length: int | None = None
     image_embedding: list[float] | None = None
