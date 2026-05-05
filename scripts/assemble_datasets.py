@@ -45,6 +45,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include", default="coco,textvqa,mmmu")
     parser.add_argument("--split", default="validation")
     parser.add_argument(
+        "--no-streaming",
+        action="store_true",
+        help="Disable Hugging Face streaming and build local Arrow caches",
+    )
+    parser.add_argument(
+        "--hf-cache-dir",
+        default=None,
+        help="Optional Hugging Face cache directory for non-streaming loads",
+    )
+    parser.add_argument(
         "--demo",
         action="store_true",
         help="Generate synthetic COCO/TextVQA/MMMU-like rows without Hugging Face datasets",
@@ -68,7 +78,13 @@ def resolve_split(dataset: str, requested: str) -> str:
     return resolved
 
 
-def load_hf_dataset(dataset_name: str, split: str, config: str | None = None):
+def load_hf_dataset(
+    dataset_name: str,
+    split: str,
+    config: str | None = None,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+):
     try:
         from datasets import load_dataset
     except ImportError as exc:
@@ -76,8 +92,19 @@ def load_hf_dataset(dataset_name: str, split: str, config: str | None = None):
             "Install the Hugging Face datasets package: pip install datasets"
         ) from exc
     if config:
-        return load_dataset(dataset_name, config, split=split)
-    return load_dataset(dataset_name, split=split)
+        return load_dataset(
+            dataset_name,
+            config,
+            split=split,
+            streaming=streaming,
+            cache_dir=cache_dir,
+        )
+    return load_dataset(
+        dataset_name,
+        split=split,
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
 
 
 def first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
@@ -127,9 +154,20 @@ def save_pil_image(image: Any, image_dir: Path, filename: str) -> str | None:
     return None
 
 
-def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+def load_coco_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
     """Load and normalize COCO-style samples."""
-    raw = load_hf_dataset("lmms-lab/COCO-Caption2017", resolve_split("coco", split))
+    raw = load_hf_dataset(
+        "lmms-lab/COCO-Caption2017",
+        resolve_split("coco", split),
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
     for index, row in enumerate(raw):
         if index >= limit:
             break
@@ -149,9 +187,20 @@ def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
         )
 
 
-def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+def load_textvqa_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
     """Load and normalize TextVQA/OCR-heavy samples."""
-    raw = load_hf_dataset("lmms-lab/TextVQA", resolve_split("textvqa", split))
+    raw = load_hf_dataset(
+        "lmms-lab/TextVQA",
+        resolve_split("textvqa", split),
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
     for index, row in enumerate(raw):
         if index >= limit:
             break
@@ -181,7 +230,13 @@ MMMU_CONFIGS = [
 ]
 
 
-def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+def load_mmmu_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
     """Load and normalize MMMU/reasoning-heavy samples across all subject configs."""
     hf_split = resolve_split("mmmu", split)
     collected = 0
@@ -189,7 +244,13 @@ def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
         if collected >= limit:
             break
         try:
-            raw = load_hf_dataset("MMMU/MMMU", hf_split, config=config)
+            raw = load_hf_dataset(
+                "MMMU/MMMU",
+                hf_split,
+                config=config,
+                streaming=streaming,
+                cache_dir=cache_dir,
+            )
         except Exception as exc:
             print(f"  Skipping MMMU config '{config}': {exc}")
             continue
@@ -248,6 +309,8 @@ def iter_normalized_records(
     limit_per_dataset: int,
     split: str,
     image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
 ) -> Iterable[dict[str, Any]]:
     """Dispatch to each dataset loader and yield normalized records."""
     loaders = {
@@ -258,7 +321,7 @@ def iter_normalized_records(
     for name in dataset_names:
         if name not in loaders:
             raise ValueError(f"Unknown dataset '{name}'. Available: {', '.join(sorted(loaders))}")
-        yield from loaders[name](limit_per_dataset, split, image_dir)
+        yield from loaders[name](limit_per_dataset, split, image_dir, streaming, cache_dir)
 
 
 def iter_demo_records(dataset_names: list[str], limit_per_dataset: int, split: str) -> Iterable[dict[str, Any]]:
@@ -318,7 +381,14 @@ def main() -> None:
     records = (
         iter_demo_records(dataset_names, args.limit_per_dataset, args.split)
         if args.demo
-        else iter_normalized_records(dataset_names, args.limit_per_dataset, args.split, image_dir)
+        else iter_normalized_records(
+            dataset_names,
+            args.limit_per_dataset,
+            args.split,
+            image_dir,
+            streaming=not args.no_streaming,
+            cache_dir=args.hf_cache_dir,
+        )
     )
     count = write_jsonl(
         records,
