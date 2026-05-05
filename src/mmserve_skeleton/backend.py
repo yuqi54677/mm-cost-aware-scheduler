@@ -90,7 +90,7 @@ class VLLMBackend(Backend):
 
     def __init__(
         self,
-        model: str = "Qwen/Qwen2-VL-7B-Instruct",
+        model: str = "Qwen/Qwen2-VL-2B-Instruct",
         max_tokens: int = 128,
         temperature: float = 0.0,
         trust_remote_code: bool = True,
