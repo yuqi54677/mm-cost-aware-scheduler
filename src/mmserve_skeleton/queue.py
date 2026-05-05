@@ -13,7 +13,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 
-from mmserve_skeleton.models import MMRequest
+from .models import MMRequest
 
 
 class RequestQueue:

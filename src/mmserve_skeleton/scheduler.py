@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from mmserve_skeleton.models import MMRequest
+from .models import MMRequest
 
 
-@dataclass(slots=True)
+@dataclass
 class ScheduleDecision:
     """Scheduler output: selected request IDs plus the policy name."""
 

@@ -4,6 +4,6 @@ Importing from this package should give callers the high-level orchestration
 objects without requiring them to know the internal file layout.
 """
 
-from mmserve_skeleton.pipeline import ServingPipeline
+from .pipeline import ServingPipeline
 
 __all__ = ["ServingPipeline"]

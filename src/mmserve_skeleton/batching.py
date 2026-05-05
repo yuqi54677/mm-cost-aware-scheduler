@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 import uuid
 
-from mmserve_skeleton.models import Batch, MMRequest
+from .models import Batch, MMRequest
 
 
 class BatchBuilder:

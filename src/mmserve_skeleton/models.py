@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class RequestTimings:
     """Lifecycle timestamps used to compute latency, queue wait, and TTFT."""
 
@@ -24,7 +24,7 @@ class RequestTimings:
     completion_time: float | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class RequestFeatures:
     """Cheap request features and future estimator placeholders."""
 
@@ -35,9 +35,11 @@ class RequestFeatures:
     num_images: int = 0
     predicted_prefill_cost: float | None = None
     predicted_output_length: int | None = None
+    image_embedding: list[float] | None = None
+    text_embedding: list[float] | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class MMRequest:
     """Internal representation of one multimodal serving request."""
 
@@ -58,7 +60,7 @@ class MMRequest:
             self.timings = RequestTimings(arrival_time=self.arrival_time)
 
 
-@dataclass(slots=True)
+@dataclass
 class Batch:
     """Group of requests selected for one backend execution step."""
 
@@ -67,7 +69,7 @@ class Batch:
     created_time: float
 
 
-@dataclass(slots=True)
+@dataclass
 class BackendResult:
     """Backend output normalized back into pipeline-friendly fields."""
 
