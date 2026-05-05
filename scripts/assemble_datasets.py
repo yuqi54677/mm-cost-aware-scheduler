@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-per-dataset", type=int, default=100)
     parser.add_argument("--include", default="coco,textvqa,mmmu")
     parser.add_argument("--split", default="validation")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Generate synthetic COCO/TextVQA/MMMU-like rows without Hugging Face datasets",
+    )
     return parser.parse_args()
 
 
@@ -253,6 +258,43 @@ def iter_normalized_records(
         yield from loaders[name](limit_per_dataset, split, image_dir)
 
 
+def iter_demo_records(dataset_names: list[str], limit_per_dataset: int, split: str) -> Iterable[dict[str, Any]]:
+    """Generate richer local examples when HF datasets are not installed."""
+    examples = {
+        "coco": [
+            ("A group of students sitting around a table with laptops.", "Describe the image in detail.", "captioning"),
+            ("A city street with buses, signs, and pedestrians.", "Give a concise caption for this image.", "captioning"),
+            ("A kitchen counter with several bowls and fruit.", "Describe the visible objects and scene.", "captioning"),
+        ],
+        "textvqa": [
+            ("STOP", "What word is written on the red sign?", "ocr"),
+            ("12:45", "Read the time shown on the clock.", "ocr"),
+            ("SALE 50% OFF", "What discount is advertised in the image?", "ocr"),
+        ],
+        "mmmu": [
+            ("B", "A diagram shows force applied to a block. Which option best explains the motion?\nOptions: A. no motion B. acceleration C. constant mass D. unknown", "physics"),
+            ("42", "Solve the math problem shown in the image and give the final answer.", "math"),
+            ("mitochondria", "The biology figure labels an organelle. Which structure produces ATP?", "biology"),
+        ],
+    }
+
+    for dataset in dataset_names:
+        if dataset not in examples:
+            raise ValueError(f"Unknown dataset '{dataset}'. Available: {', '.join(sorted(examples))}")
+        for index in range(limit_per_dataset):
+            answer, prompt, category = examples[dataset][index % len(examples[dataset])]
+            yield normalize_record(
+                sample_id=f"demo-{dataset}-{split}-{index}",
+                dataset=dataset,
+                source=f"demo-{split}",
+                prompt=prompt,
+                image_path=None,
+                answer=answer,
+                category=category,
+                metadata={"demo": True, "template_index": index % len(examples[dataset])},
+            )
+
+
 def write_jsonl(records: Iterable[dict[str, Any]], output_path: str | Path) -> int:
     """Write normalized records to disk."""
     path = Path(output_path)
@@ -270,12 +312,18 @@ def main() -> None:
     args = parse_args()
     image_dir = Path(args.image_dir)
     dataset_names = [name.strip() for name in args.include.split(",") if name.strip()]
+    records = (
+        iter_demo_records(dataset_names, args.limit_per_dataset, args.split)
+        if args.demo
+        else iter_normalized_records(dataset_names, args.limit_per_dataset, args.split, image_dir)
+    )
     count = write_jsonl(
-        iter_normalized_records(dataset_names, args.limit_per_dataset, args.split, image_dir),
+        records,
         args.output,
     )
     print(f"Wrote {count} normalized records to {args.output}")
-    print(f"Images saved under {image_dir}/")
+    if not args.demo:
+        print(f"Images saved under {image_dir}/")
 
 
 if __name__ == "__main__":
