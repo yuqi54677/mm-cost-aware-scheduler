@@ -47,6 +47,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# Each dataset uses its own split naming convention.  Map the user-facing
+# canonical names ("train", "validation", "test") to the actual HF split names.
+_SPLIT_MAP: dict[str, dict[str, str]] = {
+    "coco":    {"train": "train", "validation": "val",        "test": "test", "val": "val"},
+    "textvqa": {"train": "train", "validation": "validation", "test": "test", "val": "validation"},
+    "mmmu":    {"train": "dev",   "validation": "validation", "test": "test", "val": "validation", "dev": "dev"},
+}
+
+
+def resolve_split(dataset: str, requested: str) -> str:
+    """Translate a canonical split name to the dataset-specific HF split name."""
+    mapping = _SPLIT_MAP.get(dataset, {})
+    resolved = mapping.get(requested, requested)
+    return resolved
+
+
 def load_hf_dataset(dataset_name: str, split: str):
     """Load a Hugging Face dataset with a clear error when dependencies are missing."""
     try:
@@ -108,7 +124,7 @@ def save_pil_image(image: Any, image_dir: Path, filename: str) -> str | None:
 
 def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
     """Load and normalize COCO-style samples."""
-    raw = load_hf_dataset("lmms-lab/COCO-Caption2017", split)
+    raw = load_hf_dataset("lmms-lab/COCO-Caption2017", resolve_split("coco", split))
     for index, row in enumerate(raw):
         if index >= limit:
             break
@@ -130,7 +146,7 @@ def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
 
 def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
     """Load and normalize TextVQA/OCR-heavy samples."""
-    raw = load_hf_dataset("lmms-lab/TextVQA", split)
+    raw = load_hf_dataset("lmms-lab/TextVQA", resolve_split("textvqa", split))
     for index, row in enumerate(raw):
         if index >= limit:
             break
@@ -152,7 +168,7 @@ def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[di
 
 def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
     """Load and normalize MMMU/reasoning-heavy samples."""
-    raw = load_hf_dataset("MMMU/MMMU", split)
+    raw = load_hf_dataset("MMMU/MMMU", resolve_split("mmmu", split))
     for index, row in enumerate(raw):
         if index >= limit:
             break
