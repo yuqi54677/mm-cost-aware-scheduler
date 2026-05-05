@@ -63,15 +63,15 @@ def resolve_split(dataset: str, requested: str) -> str:
     return resolved
 
 
-def load_hf_dataset(dataset_name: str, split: str):
-    """Load a Hugging Face dataset with a clear error when dependencies are missing."""
+def load_hf_dataset(dataset_name: str, split: str, config: str | None = None):
     try:
         from datasets import load_dataset
     except ImportError as exc:
         raise RuntimeError(
-            "Install the Hugging Face datasets package to assemble real datasets: "
-            "pip install datasets"
+            "Install the Hugging Face datasets package: pip install datasets"
         ) from exc
+    if config:
+        return load_dataset(dataset_name, config, split=split)
     return load_dataset(dataset_name, split=split)
 
 
@@ -166,29 +166,49 @@ def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[di
         )
 
 
+MMMU_CONFIGS = [
+    "Accounting", "Agriculture", "Architecture_and_Engineering", "Art", "Art_Theory",
+    "Basic_Medical_Science", "Biology", "Chemistry", "Clinical_Medicine", "Computer_Science",
+    "Design", "Diagnostics_and_Laboratory_Medicine", "Economics", "Electronics",
+    "Energy_and_Power", "Finance", "Geography", "History", "Literature", "Manage",
+    "Marketing", "Materials", "Math", "Mechanical_Engineering", "Music", "Pharmacy",
+    "Physics", "Psychology", "Public_Health", "Sociology",
+]
+
+
 def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
-    """Load and normalize MMMU/reasoning-heavy samples."""
-    raw = load_hf_dataset("MMMU/MMMU", resolve_split("mmmu", split))
-    for index, row in enumerate(raw):
-        if index >= limit:
+    """Load and normalize MMMU/reasoning-heavy samples across all subject configs."""
+    hf_split = resolve_split("mmmu", split)
+    collected = 0
+    for config in MMMU_CONFIGS:
+        if collected >= limit:
             break
-        question = first_present(row, ["question", "prompt"], "")
-        options = first_present(row, ["options", "choices"], None)
-        if options:
-            question = f"{question}\nOptions: {options}"
-        raw_image = first_present(row, ["image_1", "image", "image_path"])
-        sample_id = str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{index}"))
-        image_path = save_pil_image(raw_image, image_dir / "mmmu", f"{split}_{index}.jpg")
-        yield normalize_record(
-            sample_id=sample_id,
-            dataset="mmmu",
-            source=split,
-            prompt=str(question),
-            image_path=image_path,
-            answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
-            category=str(first_present(row, ["subject", "category"], "reasoning")),
-            metadata={"raw_keys": sorted(row.keys())},
-        )
+        try:
+            raw = load_hf_dataset("MMMU/MMMU", hf_split, config=config)
+        except Exception as exc:
+            print(f"  Skipping MMMU config '{config}': {exc}")
+            continue
+        for row in raw:
+            if collected >= limit:
+                break
+            question = first_present(row, ["question", "prompt"], "")
+            options = first_present(row, ["options", "choices"], None)
+            if options:
+                question = f"{question}\nOptions: {options}"
+            raw_image = first_present(row, ["image_1", "image", "image_path"])
+            sample_id = str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{collected}"))
+            image_path = save_pil_image(raw_image, image_dir / "mmmu", f"{split}_{collected}.jpg")
+            yield normalize_record(
+                sample_id=sample_id,
+                dataset="mmmu",
+                source=split,
+                prompt=str(question),
+                image_path=image_path,
+                answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
+                category=config,
+                metadata={"raw_keys": sorted(row.keys()), "mmmu_config": config},
+            )
+            collected += 1
 
 
 def normalize_record(
