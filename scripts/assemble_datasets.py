@@ -237,8 +237,49 @@ def load_mmmu_samples(
     streaming: bool = True,
     cache_dir: str | None = None,
 ) -> Iterable[dict[str, Any]]:
-    """Load and normalize MMMU/reasoning-heavy samples across all subject configs."""
+    """Load and normalize MMMU/reasoning-heavy samples.
+
+    Prefer the unified parquet mirror because it avoids iterating over 30
+    subject configs, which creates many cache locks in small containers.
+    """
     hf_split = resolve_split("mmmu", split)
+    try:
+        raw = load_hf_dataset(
+            "HuggingFaceM4/MMMU",
+            hf_split,
+            streaming=streaming,
+            cache_dir=cache_dir,
+        )
+        for index, row in enumerate(raw):
+            if index >= limit:
+                break
+            question = first_present(row, ["question", "prompt"], "")
+            options = first_present(row, ["options", "choices"], None)
+            if options:
+                question = f"{question}\nOptions: {options}"
+            raw_image = first_present(
+                row,
+                ["image_1", "image", "image_path", "image_2", "image_3"],
+            )
+            sample_id = str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{index}"))
+            image_path = save_pil_image(raw_image, image_dir / "mmmu", f"{split}_{index}.jpg")
+            yield normalize_record(
+                sample_id=sample_id,
+                dataset="mmmu",
+                source=split,
+                prompt=add_qwen_vision_tokens(str(question)),
+                image_path=image_path,
+                answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
+                category=str(first_present(row, ["subfield", "category", "question_type"], "reasoning")),
+                metadata={
+                    "raw_keys": sorted(row.keys()),
+                    "hf_dataset": "HuggingFaceM4/MMMU",
+                },
+            )
+        return
+    except Exception as exc:
+        print(f"  Unified MMMU load failed, falling back to subject configs: {exc}")
+
     collected = 0
     for config in MMMU_CONFIGS:
         if collected >= limit:
