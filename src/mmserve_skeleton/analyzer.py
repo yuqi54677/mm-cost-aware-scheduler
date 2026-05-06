@@ -20,11 +20,15 @@ from typing import Any
 from .models import MMRequest
 
 
+CATEGORY_LENGTH_PERCENTILES = {
+    "brief": {"p5": 4, "p90": 32, "p99": 64},
+    "descriptive": {"p5": 16, "p90": 96, "p99": 192},
+    "ocr": {"p5": 4, "p90": 64, "p99": 128},
+    "reasoning": {"p5": 24, "p90": 160, "p99": 256},
+}
+
 CATEGORY_DEFAULT_P90 = {
-    "brief": 32,
-    "descriptive": 96,
-    "ocr": 64,
-    "reasoning": 160,
+    category: values["p90"] for category, values in CATEGORY_LENGTH_PERCENTILES.items()
 }
 
 
@@ -112,6 +116,16 @@ class OutputLengthPredictor:
 
     classifier: OutputCategoryClassifier = field(default_factory=OutputCategoryClassifier)
     category_p90: dict[str, int] = field(default_factory=lambda: dict(CATEGORY_DEFAULT_P90))
+    category_p5: dict[str, int] = field(
+        default_factory=lambda: {
+            category: values["p5"] for category, values in CATEGORY_LENGTH_PERCENTILES.items()
+        }
+    )
+    category_p99: dict[str, int] = field(
+        default_factory=lambda: {
+            category: values["p99"] for category, values in CATEGORY_LENGTH_PERCENTILES.items()
+        }
+    )
     qrf_tables: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @classmethod
@@ -121,20 +135,33 @@ class OutputLengthPredictor:
             data = json.load(handle)
         return cls(
             category_p90={**CATEGORY_DEFAULT_P90, **data.get("category_p90", {})},
+            category_p5={
+                **{
+                    category: values["p5"]
+                    for category, values in CATEGORY_LENGTH_PERCENTILES.items()
+                },
+                **data.get("category_p5", {}),
+            },
+            category_p99={
+                **{
+                    category: values["p99"]
+                    for category, values in CATEGORY_LENGTH_PERCENTILES.items()
+                },
+                **data.get("category_p99", {}),
+            },
             qrf_tables=data.get("qrf_tables", {}),
         )
 
     def predict(self, request: MMRequest) -> int:
         category = self.classifier.predict(request)
         base = self.category_p90.get(category, CATEGORY_DEFAULT_P90["descriptive"])
-        coeffs = self.qrf_tables.get(category, {})
-        predicted = (
-            base
-            + float(coeffs.get("text_length", 0.15)) * (request.features.text_length or 0)
-            + float(coeffs.get("entropy", 8.0)) * (request.features.image_entropy or 0.0)
-            + float(coeffs.get("edge_density", 80.0)) * (request.features.edge_density or 0.0)
-        )
-        value = max(1, int(round(predicted)))
+        lower_bound = self.category_p5.get(category, 1)
+        upper_bound = self.category_p99.get(category, max(base, 1))
+        entropy = request.features.image_entropy or 0.0
+        edge_density = request.features.edge_density or 0.0
+        visual_complexity_multiplier = 1.0 + math.log1p(entropy * edge_density)
+        predicted = base * visual_complexity_multiplier
+        value = int(round(min(max(predicted, lower_bound), upper_bound)))
         request.features.predicted_category = category
         request.features.predicted_output_length = value
         return value
