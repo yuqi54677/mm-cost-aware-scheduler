@@ -8,7 +8,7 @@ WORKLOAD="workloads/stress_mixed.jsonl"
 MAX_BATCH=8
 BACKEND="vllm"
 
-SCHEDULERS=("gmax")
+SCHEDULERS=("fifo" "length-only" "gmax")
 
 for SCHED in "${SCHEDULERS[@]}"; do
     LOG="logs/stress_${SCHED}.jsonl"
@@ -17,14 +17,23 @@ for SCHED in "${SCHEDULERS[@]}"; do
     echo " Log: $LOG"
     echo "================================================"
 
-    python scripts/run_workload.py \
-        --backend "$BACKEND" \
-        --workload "$WORKLOAD" \
-        --log "$LOG" \
-        --max-batch-size "$MAX_BATCH" \
-        --scheduler "$SCHED" \
-        --gmax-window-size 16 \
+    CMD=(
+        python scripts/run_benchmark.py
+        --backend "$BACKEND"
+        --workload "$WORKLOAD"
+        --log "$LOG"
+        --max-batch-size "$MAX_BATCH"
+        --scheduler "$SCHED"
+        --dispatch-interval-ms 100
+        --max-queue-delay-ms 250
         --reset-log
+    )
+
+    if [[ "$SCHED" == "gmax" ]]; then
+        CMD+=(--gmax-window-size 16)
+    fi
+
+    "${CMD[@]}"
 
     echo "Done: $SCHED"
     echo ""
