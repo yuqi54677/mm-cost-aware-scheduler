@@ -7,6 +7,7 @@ set -euo pipefail
 WORKLOAD="workloads/stress_mixed.jsonl"
 MAX_BATCH=8
 BACKEND="vllm"
+GMAX_TAIL_SLO_MS=30000
 
 SCHEDULERS=("fifo" "length-only" "gmax")
 
@@ -31,6 +32,7 @@ for SCHED in "${SCHEDULERS[@]}"; do
 
     if [[ "$SCHED" == "gmax" ]]; then
         CMD+=(--gmax-window-size 16)
+        CMD+=(--gmax-tail-slo-ms "$GMAX_TAIL_SLO_MS")
     fi
 
     "${CMD[@]}"

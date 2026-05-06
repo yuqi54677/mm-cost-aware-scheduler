@@ -37,6 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-batch-size", type=int, default=4)
     parser.add_argument("--gmax-window-size", type=int, default=None)
     parser.add_argument(
+        "--gmax-tail-slo-ms",
+        type=float,
+        default=None,
+        help="For GMAX, protect requests that have waited at least this long.",
+    )
+    parser.add_argument(
         "--dispatch-interval-ms",
         type=float,
         default=50.0,
@@ -86,6 +92,9 @@ def build_scheduler(args: argparse.Namespace):
         return GMAXScheduler(
             max_batch_size=args.max_batch_size,
             window_size=args.gmax_window_size,
+            tail_slo_seconds=args.gmax_tail_slo_ms / 1000.0
+            if args.gmax_tail_slo_ms is not None
+            else None,
         )
     return FIFOScheduler(max_batch_size=args.max_batch_size)
 
