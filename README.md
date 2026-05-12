@@ -1,23 +1,5 @@
 # Multimodal Serving Skeleton
 
-This repository is a minimal experiment pipeline for multimodal request scheduling. It turns normalized image/text examples into replayable serving workloads, sends them through an explicit queue/scheduler/batching pipeline, runs a backend, writes JSONL traces, and computes quick metrics.
-
-The target architecture is:
-
-```text
-raw datasets
-  -> dataset assembly
-  -> workload generation
-  -> request queue
-  -> scheduler
-  -> batch builder
-  -> backend
-  -> structured logs
-  -> analysis
-```
-
-The smart scheduling logic is not implemented yet. The point of this skeleton is to make the boundaries real so later work can replace the naive pieces safely.
-
 ## Project Structure
 
 ```text
@@ -38,13 +20,6 @@ scripts/
   run_workload.py       Replays a workload through the mock serving pipeline.
   analyze_logs.py       Prints basic metrics from JSONL request logs.
 
-workloads/
-  sample.jsonl                    Small hand-written workload.
-  normalized_sample.jsonl         Example output shape for dataset assembly.
-  normalized_sample_workload.jsonl Example workload generated from normalized data.
-
-logs/
-  *.jsonl             Request traces produced by run_workload.py.
 ```
 
 ## Data Formats
@@ -69,27 +44,8 @@ Replay the provided sample workload:
 
 ```powershell
 python scripts/run_workload.py --workload workloads/sample.jsonl --log logs/sample_run.jsonl --reset-log
-python scripts/analyze_logs.py --log logs/sample_run.jsonl
 ```
 
-Generate a workload from normalized data:
-
-```powershell
-python scripts/create_workload.py --input workloads/normalized_sample.jsonl --output workloads/normalized_sample_workload.jsonl --arrival-process fixed-gap --gap-seconds 0.2 --seed 7
-```
-
-Generate a Poisson-arrival workload:
-
-```powershell
-python scripts/create_workload.py --input data/normalized/assembled.jsonl --output workloads/poisson.jsonl --arrival-process poisson --rate 2.0 --seed 42
-```
-
-Run the generated workload:
-
-```powershell
-python scripts/run_workload.py --workload workloads/poisson.jsonl --log logs/poisson.jsonl --reset-log
-python scripts/analyze_logs.py --log logs/poisson.jsonl
-```
 
 ## Component Responsibilities
 

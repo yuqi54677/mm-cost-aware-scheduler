@@ -79,13 +79,30 @@ class PrefillCostEstimator:
 
 
 class OutputCategoryClassifier:
-    """FastText-style category classifier with a keyword fallback.
+    """FastText-style category classifier with deterministic fallback strategies.
 
     If a FastText model path is provided, load it. Otherwise use a deterministic
     classifier so the pipeline remains runnable without training artifacts.
+
+    The default ``keyword`` strategy preserves the original behavior. The
+    ``dataset_keyword`` strategy combines dataset identity with keyword matching
+    so experiments can compare keyword-only classification against a simple
+    dataset-prior baseline.
     """
 
-    def __init__(self, model_path: str | Path | None = None) -> None:
+    VALID_STRATEGIES = {"keyword", "dataset_keyword"}
+
+    def __init__(
+        self,
+        model_path: str | Path | None = None,
+        strategy: str = "keyword",
+    ) -> None:
+        if strategy not in self.VALID_STRATEGIES:
+            raise ValueError(
+                f"Unknown output category strategy '{strategy}'. "
+                f"Available: {', '.join(sorted(self.VALID_STRATEGIES))}"
+            )
+        self.strategy = strategy
         self._model = None
         if model_path:
             try:
@@ -100,6 +117,17 @@ class OutputCategoryClassifier:
             label = self._model.predict(request.prompt, k=1)[0][0]
             return label.replace("__label__", "").lower()
 
+        if self.strategy == "dataset_keyword":
+            return self.predict_dataset_keyword(request)
+
+        return self.predict_keyword_only(request)
+
+    def predict_keyword_only(self, request: MMRequest) -> str:
+        """Classify using only prompt keywords.
+
+        This is the original deterministic fallback and intentionally ignores
+        dataset/source labels.
+        """
         text = request.prompt.lower()
         if any(word in text for word in ["read", "text", "sign", "receipt", "word", "ocr"]):
             return "ocr"
@@ -108,6 +136,38 @@ class OutputCategoryClassifier:
         if any(word in text for word in ["describe", "caption", "detail", "summarize"]):
             return "descriptive"
         return "brief"
+
+    def predict_dataset_keyword(self, request: MMRequest) -> str:
+        """Classify with prompt keywords plus a dataset identity prior.
+
+        OCR/reasoning keywords override dataset priors because they often signal
+        the actual task more directly than a broad dataset label. The dataset
+        prior fills in prompts that are too short or generic for keyword-only
+        classification.
+        """
+        keyword_category = self.predict_keyword_only(request)
+        if keyword_category in {"ocr", "reasoning"}:
+            return keyword_category
+
+        dataset_category = self._dataset_prior(request.dataset)
+        if dataset_category is not None:
+            return dataset_category
+
+        return keyword_category
+
+    def _dataset_prior(self, dataset: str | None) -> str | None:
+        """Map common benchmark dataset identities to coarse task categories."""
+        if not dataset:
+            return None
+
+        normalized = dataset.lower().replace("_", "").replace("-", "")
+        if "textvqa" in normalized or "ocr" in normalized:
+            return "ocr"
+        if "coco" in normalized or "caption" in normalized:
+            return "descriptive"
+        if "mmmu" in normalized or "math" in normalized or "science" in normalized:
+            return "reasoning"
+        return None
 
 
 @dataclass
