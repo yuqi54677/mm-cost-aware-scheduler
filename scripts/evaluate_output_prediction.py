@@ -42,6 +42,31 @@ ANSWER_FIELDS = [
 ]
 
 
+class JSONLengthProfile:
+    """Read-only length profile loaded from a prebuilt JSON file."""
+
+    def __init__(self, samples: dict[str, list[int]], min_samples: int = 1) -> None:
+        self.samples = {
+            str(category): sorted(int(value) for value in values)
+            for category, values in samples.items()
+        }
+        self.min_samples = min_samples
+
+    @classmethod
+    def from_json(cls, path: str | Path, min_samples: int = 1) -> "JSONLengthProfile":
+        with Path(path).open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        samples = data.get("samples", data)
+        return cls(samples=samples, min_samples=int(data.get("min_samples", min_samples)))
+
+    def p90(self, category: str) -> int | None:
+        values = self.samples.get(category, [])
+        if len(values) < self.min_samples:
+            return None
+        index = min(len(values) - 1, int(0.90 * (len(values) - 1)))
+        return values[index]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workload", required=True, help="Input workload JSONL")
@@ -78,6 +103,17 @@ def parse_args() -> argparse.Namespace:
         "--predictor-config",
         default=None,
         help="Optional JSON config for OutputLengthPredictor.from_json",
+    )
+    parser.add_argument(
+        "--length-profile",
+        default=None,
+        help="Optional prebuilt JSON profile of observed output lengths by predicted category",
+    )
+    parser.add_argument(
+        "--profile-min-samples",
+        type=int,
+        default=1,
+        help="Minimum samples required before using a category profile percentile",
     )
     parser.add_argument(
         "--prefill-profile",
@@ -125,7 +161,19 @@ def build_backend(args: argparse.Namespace):
     return MockBackend()
 
 
-def build_metadata_extractor(args: argparse.Namespace) -> MetadataExtractor:
+def build_output_length_profile(args: argparse.Namespace) -> JSONLengthProfile | None:
+    if not args.length_profile:
+        return None
+    return JSONLengthProfile.from_json(
+        args.length_profile,
+        min_samples=args.profile_min_samples,
+    )
+
+
+def build_metadata_extractor(
+    args: argparse.Namespace,
+    length_profile: JSONLengthProfile | None = None,
+) -> MetadataExtractor:
     strategy = args.classifier.replace("-", "_")
     classifier = OutputCategoryClassifier(strategy=strategy)
     if args.predictor_config:
@@ -133,6 +181,7 @@ def build_metadata_extractor(args: argparse.Namespace) -> MetadataExtractor:
         output_predictor.classifier = classifier
     else:
         output_predictor = OutputLengthPredictor(classifier=classifier)
+    output_predictor.length_profile = length_profile
 
     prefill_estimator = (
         PrefillCostEstimator.from_profile(args.prefill_profile)
@@ -428,7 +477,8 @@ def main() -> None:
     if args.limit is not None:
         workload = workload[: args.limit]
     backend = build_backend(args) if args.target == "inference" else None
-    metadata_extractor = build_metadata_extractor(args)
+    length_profile = build_output_length_profile(args)
+    metadata_extractor = build_metadata_extractor(args, length_profile)
 
     records: list[dict[str, Any]] = []
     skipped = 0
@@ -446,15 +496,14 @@ def main() -> None:
             else:
                 records.append(evaluated)
         else:
-            records.append(
-                evaluate_record(
-                    record=record,
-                    index=index,
-                    metadata_extractor=metadata_extractor,
-                    backend=backend,
-                    classifier_name=args.classifier,
-                )
+            evaluated = evaluate_record(
+                record=record,
+                index=index,
+                metadata_extractor=metadata_extractor,
+                backend=backend,
+                classifier_name=args.classifier,
             )
+            records.append(evaluated)
 
     write_records(args.output, records, args.reset_output)
     dataset_label = args.dataset or "all"

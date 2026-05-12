@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+from bisect import insort
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -171,6 +172,85 @@ class OutputCategoryClassifier:
 
 
 @dataclass
+class OutputLengthProfile:
+    """Observed output-length distributions keyed by predicted category.
+
+    The profile is intentionally simple and JSON-serializable. Each category
+    stores a sorted list of observed token lengths, so percentile lookup is
+    deterministic and updates are cheap enough for the small experiment sizes in
+    this project.
+    """
+
+    samples: dict[str, list[int]] = field(default_factory=dict)
+    min_samples: int = 5
+
+    @classmethod
+    def from_json(cls, path: str | Path, min_samples: int = 5) -> "OutputLengthProfile":
+        profile_path = Path(path)
+        if not profile_path.exists():
+            return cls(min_samples=min_samples)
+        with profile_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        raw_samples = data.get("samples", data)
+        samples = {
+            str(category): sorted(int(value) for value in values)
+            for category, values in raw_samples.items()
+        }
+        return cls(samples=samples, min_samples=int(data.get("min_samples", min_samples)))
+
+    def to_json(self, path: str | Path) -> None:
+        profile_path = Path(path)
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        with profile_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "version": 1,
+                    "min_samples": self.min_samples,
+                    "samples": self.samples,
+                    "summary": self.summary(),
+                },
+                handle,
+                indent=2,
+                sort_keys=True,
+            )
+
+    def observe(self, category: str | None, output_length: int | None) -> None:
+        """Record one observed output length for a category."""
+        if category is None or output_length is None:
+            return
+        values = self.samples.setdefault(category, [])
+        insort(values, int(output_length))
+
+    def percentile(self, category: str, fraction: float) -> int | None:
+        """Return nearest-rank percentile for a category when enough data exists."""
+        values = self.samples.get(category, [])
+        if len(values) < self.min_samples:
+            return None
+        index = min(len(values) - 1, int(fraction * (len(values) - 1)))
+        return values[index]
+
+    def p90(self, category: str) -> int | None:
+        return self.percentile(category, 0.90)
+
+    def summary(self) -> dict[str, dict[str, int | None]]:
+        output: dict[str, dict[str, int | None]] = {}
+        for category, values in sorted(self.samples.items()):
+            output[category] = {
+                "count": len(values),
+                "p50": self._percentile_from_values(values, 0.50),
+                "p90": self._percentile_from_values(values, 0.90),
+                "p99": self._percentile_from_values(values, 0.99),
+            }
+        return output
+
+    def _percentile_from_values(self, values: list[int], fraction: float) -> int | None:
+        if not values:
+            return None
+        index = min(len(values) - 1, int(fraction * (len(values) - 1)))
+        return values[index]
+
+
+@dataclass
 class OutputLengthPredictor:
     """Two-stage output length estimator with QRF/model-file extension points."""
 
@@ -187,6 +267,7 @@ class OutputLengthPredictor:
         }
     )
     qrf_tables: dict[str, dict[str, float]] = field(default_factory=dict)
+    length_profile: OutputLengthProfile | None = None
 
     @classmethod
     def from_json(cls, path: str | Path) -> "OutputLengthPredictor":
@@ -214,9 +295,14 @@ class OutputLengthPredictor:
 
     def predict(self, request: MMRequest) -> int:
         category = self.classifier.predict(request)
-        base = self.category_p90.get(category, CATEGORY_DEFAULT_P90["descriptive"])
-        lower_bound = self.category_p5.get(category, 1)
-        upper_bound = self.category_p99.get(category, max(base, 1))
+        profile_p90 = self.length_profile.p90(category) if self.length_profile else None
+        base = profile_p90 or self.category_p90.get(category, CATEGORY_DEFAULT_P90["descriptive"])
+        lower_bound = 1 if profile_p90 is not None else self.category_p5.get(category, 1)
+        upper_bound = (
+            max(base, 1)
+            if profile_p90 is not None
+            else self.category_p99.get(category, max(base, 1))
+        )
         entropy = request.features.image_entropy or 0.0
         edge_density = request.features.edge_density or 0.0
         visual_complexity_multiplier = 1.0 + math.log1p(entropy * edge_density)
@@ -224,6 +310,11 @@ class OutputLengthPredictor:
         value = int(round(min(max(predicted, lower_bound), upper_bound)))
         request.features.predicted_category = category
         request.features.predicted_output_length = value
+        request.metadata["output_length_profile"] = {
+            "used_profile": profile_p90 is not None,
+            "profile_p90": profile_p90,
+            "fallback_p90": self.category_p90.get(category),
+        }
         return value
 
     def refine(self, request: MMRequest, generated_tokens: int, elapsed_seconds: float | None = None) -> int:
