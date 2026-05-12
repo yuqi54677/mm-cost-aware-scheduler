@@ -1,0 +1,75 @@
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments and local tooling
+.venv/
+venv/
+env/
+.env
+.env.*
+.python-version
+
+# uv / dependency caches
+.uv-cache/
+
+# Jupyter and editor files
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated experiment artifacts
+logs/
+plots/
+plots_*/
+stress_*/
+real_*_plots/
+
+# Generated data and profiling artifacts
+*.json
+*.jsonl
+*.csv
+*.tsv
+data/images/
+data/normalized/
+profiling_dataset.json
+profiles/
+
+# Generated images/media
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.mp4
+*.mov
+*.avi
+
+# Large model/checkpoint artifacts
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.onnx
+checkpoints/
+models/
