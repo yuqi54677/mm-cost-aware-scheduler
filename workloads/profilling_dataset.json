@@ -1,6 +1,6 @@
 [
   {
-    "answer": "In the desert, two people are sitting next to a small propeller plane next to a tent with other planes in the background., A couple of people sitting in chairs behind an airplane., A man and woman who have set up camp on a sandy beach, two people outside sitting on chairs with planes around them., two people are camping out in the desert",
+    "answer": "In the desert, two people are sitting next to a small propeller plane next to a tent with other planes in the background.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-101",
@@ -24,7 +24,7 @@
     "source": "validation"
   },
   {
-    "answer": "The telephone has a banana where the receiver should be., A banana replacing the phone on an answering machine, A phone with a banana where the receiver should be., A telephone has it receiver replaced with a banana., A banana placed on a phone on a table.",
+    "answer": "The telephone has a banana where the receiver should be.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-12",
@@ -48,7 +48,7 @@
     "source": "validation"
   },
   {
-    "answer": "A bathroom sink under a mirror next to a plant., A bathroom with a round sink and red tile backsplash, A large plant is in the corner of a small bathroom., A bathroom has a circular sink with red tiles, A white bathroom with a large, circular sink ",
+    "answer": "A bathroom sink under a mirror next to a plant.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-129",
@@ -72,7 +72,7 @@
     "source": "validation"
   },
   {
-    "answer": "A large clock tower is yellow and white., The white and yellow clock with a red roof reads 11:44., A tower white with yellow trim tower features a large clock., A yellow and white clock tower against a blue sky, Two clocks on perpendicular facades of a church bell tower.",
+    "answer": "A tower white with yellow trim tower features a large clock.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-137",
@@ -96,7 +96,7 @@
     "source": "validation"
   },
   {
-    "answer": "Man in motorcycle leathers standing in front of a group of bikes, Bikers, dressed in their gear, standing near their motorcycles., A group of men stand next to their bicycles., Three men standing around their motorcycles in a parking lot., Group of three motorcyclists standing in front of their motorcycles.",
+    "answer": "Group of three motorcyclists standing in front of their motorcycles.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-14",
@@ -120,7 +120,7 @@
     "source": "validation"
   },
   {
-    "answer": "Two people skateboarding down a roadway in a downhill descent., Two male skateboarders rolling down a paved slope., Two longboarders coasting, crouched, across a downhill road, two people riding skate boards on a hilly road, Two people on skateboards riding down a slanted road.",
+    "answer": "Two people skateboarding down a roadway in a downhill descent.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-149",
@@ -144,7 +144,7 @@
     "source": "validation"
   },
   {
-    "answer": "A person with an orange blanket covering them, sleeping on a wooden park bench., Person sleeping on bench in sleeping bag near parking meters., A person is sleeping on a bench in a sleeping bag., The person is sleeping on a park bench., A person covered with an orange sleeping bag rests his head on a blue back pack as he sleeps on a park bench. ",
+    "answer": "A person with an orange blanket covering them, sleeping on a wooden park bench. ",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-166",
@@ -168,7 +168,7 @@
     "source": "validation"
   },
   {
-    "answer": "A dog driving an SUV in an open grass covered field., A dog sits in the front seat of a jeep. , A dog is sitting inside a red car., A red truck has a black dog in the drivers chair., A dog sitting in the front seat of a truck.",
+    "answer": "A dog driving an SUV in an open grass covered field.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-18",
@@ -192,7 +192,7 @@
     "source": "validation"
   },
   {
-    "answer": "An orange reddish rose in a vase filled with water on top of a table., A yellow rose in a clear vase filled with water., There are two yellow flowers inside a vase., A beautiful yellow rose is seen in a small vase., Two orange roses in a small vase with water. ",
+    "answer": "An orange reddish rose in a vase filled with water on top of a table.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-22",
@@ -216,7 +216,7 @@
     "source": "validation"
   },
   {
-    "answer": "A black trash bag in a restroom next to a sink., a garbage bag in a white lighted bathroom, The bathroom has a wall sink, medicine cabinet, toothbrush holder, and bare walls., A door is open to a white bathroom that has a black garbage back on the floor., The bathroom door is open with the light on.",
+    "answer": "A black trash bag in a restroom next to a sink.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-24",
@@ -240,7 +240,7 @@
     "source": "validation"
   },
   {
-    "answer": "A car is parked on dry grass with kites overhead., A truck driving through a field with people flying kites., An open field with a truck and some kites being flown, A pickup truck is parked underneath multiple flying kites., A truck sitting on a field with kites in the air.",
+    "answer": "A car is parked on dry grass with kites overhead.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-38",
@@ -264,7 +264,7 @@
     "source": "validation"
   },
   {
-    "answer": "a brown horse is walking in between two cars, A horse walks between cars in a parking lot., A horse walking between the parking spaces of two cars., A horse is standing between two parked cars. , From the rear, we see a horse standing between two cars parked in a parking lot.",
+    "answer": "a brown horse is walking in between two cars, A horse walks between cars in a parking lot.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-54",
@@ -288,7 +288,7 @@
     "source": "validation"
   },
   {
-    "answer": "A residential bathroom has a modern motel look with upgraded fixtures and accessories., A small bathroom with a large mirror and single sink vanity., A white bathroom that has been newly cleaned, A bathroom sink next to a white toilet under a large mirror., A vanity and toilet are in a bathroom under a mirror.",
+    "answer": "A residential bathroom has a modern motel look with upgraded fixtures and accessories.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-82",
@@ -312,7 +312,7 @@
     "source": "validation"
   },
   {
-    "answer": "A parade of motorcycles is going through a group of tall trees., A group of motorcyclists drive down a tree lined street., A group of motorcycles down a long street filled with trees on either side., A group of people riding mopeds through a park., A group of scooters rides down a street",
+    "answer": "A parade of motorcycles is going through a group of tall trees.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-9",
@@ -336,7 +336,7 @@
     "source": "validation"
   },
   {
-    "answer": "A street filled with lots of traffic next to tall buildings., Cars and a bus are stopped at an intersection., many vehicles stopped on a city street , A number of vehicles waiting at an intersection., A group of cars waiting at an intersection for the light to change",
+    "answer": "A street filled with lots of traffic next to tall buildings.",
     "category": "captioning",
     "dataset": "coco",
     "id": "coco-validation-93",
