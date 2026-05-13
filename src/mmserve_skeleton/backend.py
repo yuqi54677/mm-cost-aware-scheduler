@@ -171,10 +171,10 @@ class VLLMBackend(Backend):
 
         if not request.image_path:
             messages = [{"role": "user", "content": request.prompt}]
-            text = self._tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+            token_ids = self._tokenizer.apply_chat_template(
+                messages, tokenize=True, add_generation_prompt=True
             )
-            return {"prompt": text}
+            return {"prompt_token_ids": token_ids}
 
         try:
             from PIL import Image
