@@ -164,10 +164,10 @@ class VLLMBackend(Backend):
             },
         )
 
-    def _to_vllm_input(self, request: MMRequest) -> str | dict[str, Any]:
+    def _to_vllm_input(self, request: MMRequest) -> dict[str, Any]:
         """Format text-only or image+text requests for vLLM."""
         if not request.image_path:
-            return request.prompt
+            return {"prompt": request.prompt}
 
         try:
             from PIL import Image
