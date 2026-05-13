@@ -167,7 +167,7 @@ class VLLMBackend(Backend):
     async def _to_vllm_input(self, request: MMRequest) -> dict[str, Any]:
         """Format requests through the chat template so vLLM's Renderer sees them as non-raw."""
         if not hasattr(self, "_tokenizer"):
-            self._tokenizer = await self._engine.get_tokenizer()
+            self._tokenizer = self._engine.get_tokenizer()
 
         if not request.image_path:
             messages = [{"role": "user", "content": request.prompt}]
