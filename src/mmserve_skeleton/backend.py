@@ -121,7 +121,7 @@ class VLLMBackend(Backend):
 
     async def _run_single_async(self, request: MMRequest) -> BackendResult:
         """Stream one request through vLLM, capturing TTFT on the first token."""
-        prompt = self._to_vllm_input(request)
+        prompt = await self._to_vllm_input(request)
         first_token_time: float | None = None
         final_output = None
 
@@ -164,10 +164,17 @@ class VLLMBackend(Backend):
             },
         )
 
-    def _to_vllm_input(self, request: MMRequest) -> dict[str, Any]:
-        """Format text-only or image+text requests for vLLM."""
+    async def _to_vllm_input(self, request: MMRequest) -> dict[str, Any]:
+        """Format requests through the chat template so vLLM's Renderer sees them as non-raw."""
+        if not hasattr(self, "_tokenizer"):
+            self._tokenizer = await self._engine.get_tokenizer()
+
         if not request.image_path:
-            return {"prompt": request.prompt}
+            messages = [{"role": "user", "content": request.prompt}]
+            text = self._tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            return {"prompt": text}
 
         try:
             from PIL import Image
@@ -178,7 +185,11 @@ class VLLMBackend(Backend):
         with Image.open(image_path) as image:
             loaded_image = image.convert("RGB")
 
-        return {
-            "prompt": f"<image>\n{request.prompt}",
-            "multi_modal_data": {"image": loaded_image},
-        }
+        messages = [{"role": "user", "content": [
+            {"type": "image"},
+            {"type": "text", "text": request.prompt},
+        ]}]
+        text = self._tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        return {"prompt": text, "multi_modal_data": {"image": loaded_image}}
