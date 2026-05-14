@@ -104,7 +104,9 @@ virtual environment:
 ```bash
 python -m pip install -U pip
 python -m pip install -e .
-python -m pip install -r requirements-gpu-cu128.txt
+python -m pip install -r requirements.txt
+python -m pip install "torch>=2.10" --index-url https://download.pytorch.org/whl/cu128
+python -m pip install "vllm>=0.10.1"
 ```
 
 Verify the GPU Python stack:
@@ -172,7 +174,9 @@ For vLLM model-serving runs on CUDA 12.8 Linux environments, use the CUDA 12.8
 requirements file:
 
 ```powershell
-python -m pip install -r requirements-gpu-cu128.txt
+python -m pip install -r requirements.txt
+python -m pip install "torch>=2.10" --index-url https://download.pytorch.org/whl/cu128
+python -m pip install "vllm>=0.10.1"
 ```
 
 Replay the provided sample workload:
