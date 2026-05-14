@@ -199,6 +199,17 @@ Replay the provided sample workload:
 python scripts/run_workload.py --workload workloads/sample.jsonl --log logs/sample_run.jsonl --reset-log
 ```
 
+Generate a randomized mixed workload similar to `workloads/stress_mixed.jsonl`:
+
+```powershell
+python scripts/create_mixed_workload.py `
+  --dataset-counts coco=150,textvqa=150,text-only=60 `
+  --candidate-limit-per-dataset 200 `
+  --arrival-rate 10 `
+  --seed 7 `
+  --output workloads/stress_mixed.jsonl
+```
+
 
 ## Component Responsibilities
 
