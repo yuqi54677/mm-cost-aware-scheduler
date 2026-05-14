@@ -147,13 +147,16 @@ python scripts/analyze_logs.py --log logs/demo_mock.jsonl
 Run the vLLM backend on the A40:
 
 ```bash
+export VLLM_USE_V1=0
 python scripts/run_workload.py \
   --workload workloads/demo.jsonl \
   --log logs/demo_vllm.jsonl \
   --reset-log \
   --backend vllm \
   --model Qwen/Qwen2-VL-2B-Instruct \
-  --max-tokens 64
+  --max-tokens 64 \
+  --vllm-max-model-len 8192 \
+  --vllm-gpu-memory-utilization 0.85
 python scripts/analyze_logs.py --log logs/demo_vllm.jsonl
 ```
 

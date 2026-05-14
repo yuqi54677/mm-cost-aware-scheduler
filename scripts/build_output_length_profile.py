@@ -74,6 +74,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.85)
+    parser.add_argument("--vllm-max-model-len", type=int, default=8192)
+    parser.add_argument("--vllm-enforce-eager", action="store_true")
     parser.add_argument(
         "--profile-output",
         default="profiles/output_length_profile.json",
@@ -225,6 +228,9 @@ def main() -> None:
         model=args.model,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
+        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+        max_model_len=args.vllm_max_model_len,
+        enforce_eager=args.vllm_enforce_eager,
     )
     profile, examples = build_profile_from_inference(selected, classifier, backend)
 

@@ -12,6 +12,7 @@ reflects the actual arrival of the first generated token, not batch start time.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -113,7 +114,13 @@ class VLLMBackend(Backend):
         max_tokens: int = 128,
         temperature: float = 0.0,
         trust_remote_code: bool = True,
+        gpu_memory_utilization: float = 0.85,
+        max_model_len: int | None = 8192,
+        enforce_eager: bool = False,
     ) -> None:
+        # vLLM 0.10.x defaults to the V1 engine for many models, but Qwen2-VL
+        # is more stable on the legacy engine in CUDA 12.8 pods.
+        os.environ.setdefault("VLLM_USE_V1", "0")
         try:
             from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
         except ImportError as exc:
@@ -127,6 +134,9 @@ class VLLMBackend(Backend):
             model=model,
             trust_remote_code=trust_remote_code,
             hf_overrides=_vllm_hf_overrides(model),
+            gpu_memory_utilization=gpu_memory_utilization,
+            max_model_len=max_model_len,
+            enforce_eager=enforce_eager,
         )
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._sampling_params = SamplingParams(max_tokens=max_tokens, temperature=temperature)
