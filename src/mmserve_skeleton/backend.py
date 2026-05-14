@@ -81,6 +81,25 @@ def _run_coroutine(coro: Any) -> Any:
     return asyncio.run(coro)
 
 
+def _normalize_qwen2_vl_rope_config(config: Any) -> Any:
+    """Patch HF/vLLM RoPE config drift for Qwen2-VL on older CUDA wheels."""
+    rope_scaling = getattr(config, "rope_scaling", None)
+    if not isinstance(rope_scaling, dict):
+        return config
+
+    if rope_scaling.get("type") == "mrope" and rope_scaling.get("rope_type") == "default":
+        patched = dict(rope_scaling)
+        patched.pop("rope_type", None)
+        config.rope_scaling = patched
+    return config
+
+
+def _vllm_hf_overrides(model: str) -> dict[str, Any] | Any:
+    if "qwen2-vl" in model.lower():
+        return _normalize_qwen2_vl_rope_config
+    return {}
+
+
 class VLLMBackend(Backend):
     """vLLM backend with async streaming for accurate TTFT measurement.
 
@@ -104,7 +123,11 @@ class VLLMBackend(Backend):
                 f"environment. Original import error: {exc}"
             ) from exc
 
-        engine_args = AsyncEngineArgs(model=model, trust_remote_code=trust_remote_code)
+        engine_args = AsyncEngineArgs(
+            model=model,
+            trust_remote_code=trust_remote_code,
+            hf_overrides=_vllm_hf_overrides(model),
+        )
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._sampling_params = SamplingParams(max_tokens=max_tokens, temperature=temperature)
 

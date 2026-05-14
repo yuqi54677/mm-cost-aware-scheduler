@@ -21,7 +21,7 @@ plots = [
 deep-features = [
     "Pillow>=10.0",
     "torch>=2.8,<2.9",
-    "transformers>=4.38",
+    "transformers==4.56.1",
 ]
 vllm = [
     "Pillow>=10.0",
@@ -33,7 +33,7 @@ all = [
     "matplotlib>=3.8",
     "Pillow>=10.0",
     "torch>=2.8,<2.9",
-    "transformers>=4.38",
+    "transformers==4.56.1",
 ]
 
 [tool.setuptools.packages.find]
