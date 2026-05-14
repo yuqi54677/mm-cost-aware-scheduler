@@ -95,18 +95,29 @@ uv pip install -r requirements.txt
 Install CUDA 12.8 GPU serving dependencies for the A40 pod:
 
 ```bash
-UV_TORCH_BACKEND=cu128 uv pip install -r requirements-gpu-cu128.txt
+uv pip install -r requirements-gpu-cu128.txt --torch-backend=cu128
+```
+
+If you previously installed a CUDA 13 vLLM wheel and saw
+`libcudart.so.13: cannot open shared object file`, remove the mismatched GPU
+packages and reinstall:
+
+```bash
+uv pip uninstall -y vllm torch torchvision torchaudio triton
+uv pip install -r requirements-gpu-cu128.txt --torch-backend=cu128 --refresh
 ```
 
 If `uv` is unavailable, use this `pip` fallback from inside the activated
-virtual environment:
+virtual environment. Keep the installs separate so torch comes from the CUDA
+12.8 PyTorch index and vLLM resolves from PyPI:
 
 ```bash
 python -m pip install -U pip
 python -m pip install -e .
 python -m pip install -r requirements.txt
-python -m pip install "torch>=2.10" --index-url https://download.pytorch.org/whl/cu128
-python -m pip install "vllm>=0.10.1"
+python -m pip uninstall -y vllm torch torchvision torchaudio triton
+python -m pip install "torch>=2.8,<2.9" --index-url https://download.pytorch.org/whl/cu128
+python -m pip install "vllm==0.10.2"
 ```
 
 Verify the GPU Python stack:
@@ -175,8 +186,8 @@ requirements file:
 
 ```powershell
 python -m pip install -r requirements.txt
-python -m pip install "torch>=2.10" --index-url https://download.pytorch.org/whl/cu128
-python -m pip install "vllm>=0.10.1"
+python -m pip install "torch>=2.8,<2.9" --index-url https://download.pytorch.org/whl/cu128
+python -m pip install "vllm==0.10.2"
 ```
 
 Replay the provided sample workload:

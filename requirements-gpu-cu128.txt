@@ -3,13 +3,16 @@
 # This matches pods like:
 #   NVIDIA A40, driver 570.211.01, CUDA 12.8
 #
-# Prefer the README's uv command when possible:
-#   UV_TORCH_BACKEND=cu128 uv pip install -r requirements-gpu-cu128.txt
+# Prefer the README's uv command:
+#   uv pip install -r requirements-gpu-cu128.txt --torch-backend=cu128
 #
 # pip fallback is documented in README.md because torch needs the CUDA 12.8
 # PyTorch index while vLLM should still resolve from PyPI.
 
 -r requirements.txt
 
-torch>=2.10
-vllm>=0.10.1
+# vLLM 0.20.x defaults to CUDA 13 wheels and fails on CUDA 12.8 pods with
+# "libcudart.so.13: cannot open shared object file". vLLM 0.10.2 is a known
+# CUDA 12.8-era release for Python 3.12 and A40/Ampere-class GPUs.
+torch>=2.8,<2.9
+vllm==0.10.2

@@ -100,7 +100,8 @@ class VLLMBackend(Backend):
         except ImportError as exc:
             raise RuntimeError(
                 "vLLM is not installed. Use MockBackend for local smoke tests, "
-                "or install vLLM in the model-serving environment."
+                "or install a vLLM wheel matching the model-serving CUDA "
+                f"environment. Original import error: {exc}"
             ) from exc
 
         engine_args = AsyncEngineArgs(model=model, trust_remote_code=trust_remote_code)

@@ -20,19 +20,19 @@ plots = [
 ]
 deep-features = [
     "Pillow>=10.0",
-    "torch>=2.10",
+    "torch>=2.8,<2.9",
     "transformers>=4.38",
 ]
 vllm = [
     "Pillow>=10.0",
-    "torch>=2.10",
-    "vllm>=0.10.1",
+    "torch>=2.8,<2.9",
+    "vllm==0.10.2",
 ]
 all = [
     "datasets>=2.18",
     "matplotlib>=3.8",
     "Pillow>=10.0",
-    "torch>=2.10",
+    "torch>=2.8,<2.9",
     "transformers>=4.38",
 ]
 
