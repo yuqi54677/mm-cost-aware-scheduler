@@ -1,0 +1,15 @@
+# Common development dependencies for dataset assembly, image handling,
+# plotting, and tokenizer/model helper code.
+#
+# The core mock scheduler path uses only the Python standard library.
+# Install this file for the common research workflow:
+#   python -m pip install -r requirements.txt
+#
+# Torch and vLLM are intentionally kept in requirements-gpu-cu128.txt so fresh
+# GPU pods install CUDA 12.8-compatible wheels instead of whatever PyPI defaults
+# to for the current date.
+
+datasets>=2.18
+matplotlib>=3.8
+Pillow>=10.0
+transformers>=4.38

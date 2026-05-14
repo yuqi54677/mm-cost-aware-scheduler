@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mm-cost-aware-scheduler"
+version = "0.1.0"
+description = "Multimodal serving scheduler experiments with mock and vLLM backends."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+data = [
+    "datasets>=2.18",
+    "Pillow>=10.0",
+]
+plots = [
+    "matplotlib>=3.8",
+]
+deep-features = [
+    "Pillow>=10.0",
+    "torch>=2.10",
+    "transformers>=4.38",
+]
+vllm = [
+    "Pillow>=10.0",
+    "torch>=2.10",
+    "vllm>=0.10.1",
+]
+all = [
+    "datasets>=2.18",
+    "matplotlib>=3.8",
+    "Pillow>=10.0",
+    "torch>=2.10",
+    "transformers>=4.38",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

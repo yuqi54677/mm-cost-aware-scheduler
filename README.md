@@ -40,6 +40,141 @@ Only `prompt` is required for replay, but `request_id`, `image_path`, `dataset`,
 
 ## Common Commands
 
+### Fresh GPU Pod Setup
+
+The pod shown by `nvidia-smi` has an NVIDIA A40, driver `570.211.01`, and CUDA
+`12.8`. Use CUDA 12.8 PyTorch/vLLM wheels for model-serving runs.
+
+Install basic OS tools on a fresh Ubuntu/Debian-style pod:
+
+```bash
+apt-get update
+apt-get install -y git curl ca-certificates build-essential
+```
+
+Install GitHub CLI if you want to clone private repos or authenticate with
+GitHub from the pod:
+
+```bash
+mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  | tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+apt-get update
+apt-get install -y gh
+gh auth login
+```
+
+Install `uv`:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv --version
+```
+
+Clone the project and create a Python 3.12 environment:
+
+```bash
+git clone <repo-url> mm-cost-aware-scheduler
+cd mm-cost-aware-scheduler
+uv venv --python 3.12 --seed
+source .venv/bin/activate
+python --version
+```
+
+Install the package plus common non-GPU dependencies:
+
+```bash
+uv pip install -e .
+uv pip install -r requirements.txt
+```
+
+Install CUDA 12.8 GPU serving dependencies for the A40 pod:
+
+```bash
+UV_TORCH_BACKEND=cu128 uv pip install -r requirements-gpu-cu128.txt
+```
+
+If `uv` is unavailable, use this `pip` fallback from inside the activated
+virtual environment:
+
+```bash
+python -m pip install -U pip
+python -m pip install -e .
+python -m pip install -r requirements-gpu-cu128.txt
+```
+
+Verify the GPU Python stack:
+
+```bash
+nvidia-smi
+python - <<'PY'
+import torch
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("cuda runtime:", torch.version.cuda)
+print("gpu:", torch.cuda.get_device_name(0))
+print("capability:", torch.cuda.get_device_capability(0))
+PY
+python -c "import vllm; print('vllm:', vllm.__version__)"
+```
+
+Generate a tiny demo workload and run the mock backend:
+
+```bash
+python scripts/assemble_datasets.py --demo --limit-per-dataset 2 --output data/normalized/demo.jsonl
+python scripts/create_workload.py --input data/normalized/demo.jsonl --output workloads/demo.jsonl
+python scripts/run_workload.py --workload workloads/demo.jsonl --log logs/demo_mock.jsonl --reset-log
+python scripts/analyze_logs.py --log logs/demo_mock.jsonl
+```
+
+Run the vLLM backend on the A40:
+
+```bash
+python scripts/run_workload.py \
+  --workload workloads/demo.jsonl \
+  --log logs/demo_vllm.jsonl \
+  --reset-log \
+  --backend vllm \
+  --model Qwen/Qwen2-VL-2B-Instruct \
+  --max-tokens 64
+python scripts/analyze_logs.py --log logs/demo_vllm.jsonl
+```
+
+Optional plotting:
+
+```bash
+python scripts/visualize_logs.py --log logs/demo_vllm.jsonl --output-dir plots/demo_vllm
+```
+
+### Local Setup
+
+Create a virtual environment and install the project on a non-GPU machine:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install -e .
+```
+
+Install common research dependencies for dataset assembly, plotting, and
+optional CLIP-based feature extraction:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+For vLLM model-serving runs on CUDA 12.8 Linux environments, use the CUDA 12.8
+requirements file:
+
+```powershell
+python -m pip install -r requirements-gpu-cu128.txt
+```
+
 Replay the provided sample workload:
 
 ```powershell

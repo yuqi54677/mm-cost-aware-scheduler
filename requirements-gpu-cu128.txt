@@ -1,0 +1,16 @@
+# GPU serving dependencies for NVIDIA CUDA 12.8 driver environments.
+#
+# This matches pods like:
+#   NVIDIA A40, driver 570.211.01, CUDA 12.8
+#
+# Prefer the README's uv command when possible:
+#   UV_TORCH_BACKEND=cu128 uv pip install -r requirements-gpu-cu128.txt
+#
+# pip fallback:
+#   python -m pip install -r requirements-gpu-cu128.txt
+
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+torch>=2.10
+vllm>=0.10.1
