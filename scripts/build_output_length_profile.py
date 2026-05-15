@@ -78,6 +78,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vllm-max-model-len", type=int, default=8192)
     parser.add_argument("--vllm-enforce-eager", action="store_true")
     parser.add_argument(
+        "--system-prompt",
+        default=(
+            "Answer concisely. For questions, provide only the final answer "
+            "unless more detail is explicitly requested."
+        ),
+        help="System instruction applied by the vLLM chat template.",
+    )
+    parser.add_argument(
         "--profile-output",
         default="profiles/output_length_profile.json",
         help="Output length profile JSON used by evaluation",
@@ -231,6 +239,7 @@ def main() -> None:
         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
         max_model_len=args.vllm_max_model_len,
         enforce_eager=args.vllm_enforce_eager,
+        system_prompt=args.system_prompt,
     )
     profile, examples = build_profile_from_inference(selected, classifier, backend)
 
@@ -244,6 +253,7 @@ def main() -> None:
             "temperature": args.temperature,
             "seed": args.seed,
             "classifier": args.classifier,
+            "system_prompt": args.system_prompt,
             "datasets": datasets,
             "sample_counts": sample_counts,
             "profile_summary": profile.summary(),

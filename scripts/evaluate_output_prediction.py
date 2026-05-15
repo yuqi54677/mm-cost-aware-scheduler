@@ -127,6 +127,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.85)
     parser.add_argument("--vllm-max-model-len", type=int, default=8192)
     parser.add_argument("--vllm-enforce-eager", action="store_true")
+    parser.add_argument(
+        "--system-prompt",
+        default=(
+            "Answer concisely. For questions, provide only the final answer "
+            "unless more detail is explicitly requested."
+        ),
+        help="System instruction applied by the vLLM chat template.",
+    )
     return parser.parse_args()
 
 
@@ -163,6 +171,7 @@ def build_backend(args: argparse.Namespace):
             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
             max_model_len=args.vllm_max_model_len,
             enforce_eager=args.vllm_enforce_eager,
+            system_prompt=args.system_prompt,
         )
     return MockBackend()
 
@@ -269,6 +278,7 @@ def base_evaluation_record(
     request: MMRequest,
     classifier_name: str,
     target: str,
+    system_prompt: str,
 ) -> dict[str, Any]:
     return {
         "request_id": request.request_id,
@@ -284,6 +294,7 @@ def base_evaluation_record(
         "predicted_prefill_cost": request.features.predicted_prefill_cost,
         "predicted_output_length": request.features.predicted_output_length,
         "metadata": request.metadata,
+        "system_prompt": system_prompt,
     }
 
 
@@ -293,6 +304,7 @@ def evaluate_record(
     metadata_extractor: MetadataExtractor,
     backend: Any,
     classifier_name: str,
+    system_prompt: str,
 ) -> dict[str, Any]:
     request = request_from_record(record, index)
     metadata_extractor.enrich(request)
@@ -308,6 +320,7 @@ def evaluate_record(
         request=request,
         classifier_name=classifier_name,
         target="inference",
+        system_prompt=system_prompt,
     )
     output.update(prediction_error_record(predicted=predicted, actual=actual))
     output.update(
@@ -327,6 +340,7 @@ def evaluate_ground_truth_record(
     metadata_extractor: MetadataExtractor,
     classifier_name: str,
     answer_field: str | None,
+    system_prompt: str,
 ) -> dict[str, Any] | None:
     answer = find_ground_truth_answer(record, answer_field)
     actual = count_answer_tokens(answer)
@@ -341,6 +355,7 @@ def evaluate_ground_truth_record(
         request=request,
         classifier_name=classifier_name,
         target="ground-truth",
+        system_prompt=system_prompt,
     )
     output.update(prediction_error_record(predicted=predicted, actual=actual))
     output.update(
@@ -496,6 +511,7 @@ def main() -> None:
                 metadata_extractor=metadata_extractor,
                 classifier_name=args.classifier,
                 answer_field=args.answer_field,
+                system_prompt=args.system_prompt,
             )
             if evaluated is None:
                 skipped += 1
@@ -508,6 +524,7 @@ def main() -> None:
                 metadata_extractor=metadata_extractor,
                 backend=backend,
                 classifier_name=args.classifier,
+                system_prompt=args.system_prompt,
             )
             records.append(evaluated)
 

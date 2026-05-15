@@ -112,6 +112,12 @@ def _clean_prompt_text(prompt: str) -> str:
     return prompt.replace(QWEN_IMAGE_PLACEHOLDER, "").strip()
 
 
+def _instruction_wrapped_prompt(prompt: str, system_prompt: str) -> str:
+    if not system_prompt.strip():
+        return prompt
+    return f"Response instruction: {system_prompt.strip()}\n\nTask: {prompt}"
+
+
 class VLLMBackend(Backend):
     """vLLM backend with async streaming for accurate TTFT measurement.
 
@@ -128,6 +134,7 @@ class VLLMBackend(Backend):
         gpu_memory_utilization: float = 0.85,
         max_model_len: int | None = 8192,
         enforce_eager: bool = False,
+        system_prompt: str = "Answer concisely. For questions, provide only the final answer unless more detail is explicitly requested.",
     ) -> None:
         # vLLM 0.10.x defaults to the V1 engine for many models, but Qwen2-VL
         # is more stable on the legacy engine in CUDA 12.8 pods.
@@ -154,6 +161,7 @@ class VLLMBackend(Backend):
         self._is_qwen2_vl = _is_qwen2_vl_model(model)
         self._processor = self._load_qwen2_vl_processor(model, trust_remote_code)
         self._tokenizer = None if self._processor is not None else self._load_tokenizer(model)
+        self._system_prompt = system_prompt
 
     def generate(self, request: MMRequest) -> BackendResult:
         """Model-wrapper function for a single request."""
@@ -170,6 +178,7 @@ class VLLMBackend(Backend):
     async def _run_single_async(self, request: MMRequest) -> BackendResult:
         """Stream one request through vLLM, capturing TTFT on the first token."""
         prompt = self._to_vllm_input(request)
+        formatted_prompt = prompt["prompt"] if isinstance(prompt, dict) else prompt
         first_token_time: float | None = None
         final_output = None
 
@@ -211,6 +220,7 @@ class VLLMBackend(Backend):
                 "finish_reason": getattr(out, "finish_reason", None),
                 "token_ids": token_ids,
                 "text_repr": repr(generated_text),
+                "formatted_prompt_preview": formatted_prompt[:500],
             },
         )
 
@@ -257,13 +267,13 @@ class VLLMBackend(Backend):
             return None
 
     def _format_text_prompt(self, prompt: str) -> str:
-        text = _clean_prompt_text(prompt)
+        text = _instruction_wrapped_prompt(_clean_prompt_text(prompt), self._system_prompt)
         templater = self._processor or self._tokenizer
         if templater is None or not hasattr(templater, "apply_chat_template"):
             return text
 
         messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": text},
         ]
         return templater.apply_chat_template(
@@ -273,12 +283,12 @@ class VLLMBackend(Backend):
         )
 
     def _format_image_prompt(self, prompt: str, image_path: Path) -> str:
-        text = _clean_prompt_text(prompt)
+        text = _instruction_wrapped_prompt(_clean_prompt_text(prompt), self._system_prompt)
         if self._processor is None or not hasattr(self._processor, "apply_chat_template"):
             return f"{QWEN_IMAGE_PLACEHOLDER}\n{text}"
 
         messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": self._system_prompt},
             {
                 "role": "user",
                 "content": [

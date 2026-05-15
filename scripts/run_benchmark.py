@@ -36,6 +36,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.85)
     parser.add_argument("--vllm-max-model-len", type=int, default=8192)
     parser.add_argument("--vllm-enforce-eager", action="store_true")
+    parser.add_argument(
+        "--system-prompt",
+        default=(
+            "Answer concisely. For questions, provide only the final answer "
+            "unless more detail is explicitly requested."
+        ),
+        help="System instruction applied by the vLLM chat template.",
+    )
     parser.add_argument("--scheduler", choices=["fifo", "length-only", "gmax"], default="fifo")
     parser.add_argument("--max-batch-size", type=int, default=4)
     parser.add_argument("--gmax-window-size", type=int, default=None)
@@ -87,6 +95,7 @@ def build_backend(args: argparse.Namespace):
             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
             max_model_len=args.vllm_max_model_len,
             enforce_eager=args.vllm_enforce_eager,
+            system_prompt=args.system_prompt,
         )
     return MockBackend()
 
