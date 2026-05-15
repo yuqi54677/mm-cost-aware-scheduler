@@ -59,12 +59,15 @@ class JSONLengthProfile:
         samples = data.get("samples", data)
         return cls(samples=samples, min_samples=int(data.get("min_samples", min_samples)))
 
-    def p90(self, category: str) -> int | None:
+    def percentile(self, category: str, fraction: float) -> int | None:
         values = self.samples.get(category, [])
         if len(values) < self.min_samples:
             return None
-        index = min(len(values) - 1, int(0.90 * (len(values) - 1)))
+        index = min(len(values) - 1, int(fraction * (len(values) - 1)))
         return values[index]
+
+    def p90(self, category: str) -> int | None:
+        return self.percentile(category, 0.90)
 
 
 def parse_args() -> argparse.Namespace:
@@ -114,6 +117,17 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Minimum samples required before using a category profile percentile",
+    )
+    parser.add_argument(
+        "--profile-percentile",
+        type=float,
+        default=0.90,
+        help="Primary profile percentile used for predicted_output_length.",
+    )
+    parser.add_argument(
+        "--ablation-percentiles",
+        default="0.50,0.90",
+        help="Comma-separated profile percentiles to report without rerunning inference.",
     )
     parser.add_argument(
         "--prefill-profile",
@@ -197,6 +211,7 @@ def build_metadata_extractor(
     else:
         output_predictor = OutputLengthPredictor(classifier=classifier)
     output_predictor.length_profile = length_profile
+    output_predictor.length_profile_percentile = args.profile_percentile
 
     prefill_estimator = (
         PrefillCostEstimator.from_profile(args.prefill_profile)
@@ -298,6 +313,51 @@ def base_evaluation_record(
     }
 
 
+def parse_percentiles(raw: str) -> list[float]:
+    values: list[float] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        value = float(part)
+        if value > 1.0:
+            value /= 100.0
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"Percentile must be in [0, 1] or [0, 100], got {part}")
+        values.append(value)
+    return values
+
+
+def percentile_label(fraction: float) -> str:
+    return f"p{int(round(fraction * 100)):02d}"
+
+
+def ablation_prediction_record(
+    request: MMRequest,
+    actual: int,
+    length_profile: JSONLengthProfile | None,
+    percentiles: list[float],
+) -> dict[str, dict[str, float | int | bool | None]]:
+    category = request.features.predicted_category
+    output: dict[str, dict[str, float | int | bool | None]] = {}
+    for fraction in percentiles:
+        profile_value = (
+            length_profile.percentile(category, fraction)
+            if length_profile is not None and category is not None
+            else None
+        )
+        predicted = int(profile_value) if profile_value is not None else None
+        error = prediction_error_record(predicted=predicted, actual=actual)
+        output[percentile_label(fraction)] = {
+            "percentile": fraction,
+            "used_profile": profile_value is not None,
+            "predicted_output_length": predicted,
+            "underestimated": predicted is not None and predicted < actual,
+            **error,
+        }
+    return output
+
+
 def evaluate_record(
     record: dict[str, Any],
     index: int,
@@ -305,6 +365,8 @@ def evaluate_record(
     backend: Any,
     classifier_name: str,
     system_prompt: str,
+    length_profile: JSONLengthProfile | None,
+    ablation_percentiles: list[float],
 ) -> dict[str, Any]:
     request = request_from_record(record, index)
     metadata_extractor.enrich(request)
@@ -329,6 +391,12 @@ def evaluate_record(
         "inference_seconds": completed - started,
         "generated_text": truncate(result.generated_text),
         "backend_raw": result.raw,
+        "prediction_ablation": ablation_prediction_record(
+            request=request,
+            actual=actual,
+            length_profile=length_profile,
+            percentiles=ablation_percentiles,
+        ),
         }
     )
     return output
@@ -341,6 +409,8 @@ def evaluate_ground_truth_record(
     classifier_name: str,
     answer_field: str | None,
     system_prompt: str,
+    length_profile: JSONLengthProfile | None,
+    ablation_percentiles: list[float],
 ) -> dict[str, Any] | None:
     answer = find_ground_truth_answer(record, answer_field)
     actual = count_answer_tokens(answer)
@@ -362,6 +432,12 @@ def evaluate_ground_truth_record(
         {
             "ground_truth_output_length": actual,
             "ground_truth_answer": truncate(answer_to_text(answer)),
+            "prediction_ablation": ablation_prediction_record(
+                request=request,
+                actual=actual,
+                length_profile=length_profile,
+                percentiles=ablation_percentiles,
+            ),
         }
     )
     return output
@@ -500,6 +576,7 @@ def main() -> None:
     backend = build_backend(args) if args.target == "inference" else None
     length_profile = build_output_length_profile(args)
     metadata_extractor = build_metadata_extractor(args, length_profile)
+    ablation_percentiles = parse_percentiles(args.ablation_percentiles)
 
     records: list[dict[str, Any]] = []
     skipped = 0
@@ -512,6 +589,8 @@ def main() -> None:
                 classifier_name=args.classifier,
                 answer_field=args.answer_field,
                 system_prompt=args.system_prompt,
+                length_profile=length_profile,
+                ablation_percentiles=ablation_percentiles,
             )
             if evaluated is None:
                 skipped += 1
@@ -525,6 +604,8 @@ def main() -> None:
                 backend=backend,
                 classifier_name=args.classifier,
                 system_prompt=args.system_prompt,
+                length_profile=length_profile,
+                ablation_percentiles=ablation_percentiles,
             )
             records.append(evaluated)
 

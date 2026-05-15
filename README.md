@@ -210,6 +210,29 @@ python scripts/create_mixed_workload.py `
   --output workloads/stress_mixed.jsonl
 ```
 
+Evaluate output-length prediction with a primary profile percentile and p50/p90
+ablation values stored in the JSONL:
+
+```powershell
+python scripts/evaluate_output_prediction.py `
+  --workload workloads/stress_mixed.jsonl `
+  --target inference `
+  --backend vllm `
+  --length-profile profiles/output_length_mixed_profile.json `
+  --classifier dataset-keyword `
+  --profile-percentile 0.90 `
+  --ablation-percentiles 0.50,0.90 `
+  --output logs/output_length_eval_mixed.jsonl `
+  --reset-output
+```
+
+Analyze the scheduling-relevant risk metrics:
+
+```powershell
+python scripts/analyze_output_prediction_risk.py `
+  --input logs/output_length_eval_mixed.jsonl
+```
+
 
 ## Component Responsibilities
 

@@ -268,6 +268,7 @@ class OutputLengthPredictor:
     )
     qrf_tables: dict[str, dict[str, float]] = field(default_factory=dict)
     length_profile: OutputLengthProfile | None = None
+    length_profile_percentile: float = 0.90
 
     @classmethod
     def from_json(cls, path: str | Path) -> "OutputLengthPredictor":
@@ -295,12 +296,16 @@ class OutputLengthPredictor:
 
     def predict(self, request: MMRequest) -> int:
         category = self.classifier.predict(request)
-        profile_p90 = self.length_profile.p90(category) if self.length_profile else None
-        base = profile_p90 or self.category_p90.get(category, CATEGORY_DEFAULT_P90["descriptive"])
-        lower_bound = 1 if profile_p90 is not None else self.category_p5.get(category, 1)
+        profile_value = (
+            self.length_profile.percentile(category, self.length_profile_percentile)
+            if self.length_profile
+            else None
+        )
+        base = profile_value or self.category_p90.get(category, CATEGORY_DEFAULT_P90["descriptive"])
+        lower_bound = 1 if profile_value is not None else self.category_p5.get(category, 1)
         upper_bound = (
             max(base, 1)
-            if profile_p90 is not None
+            if profile_value is not None
             else self.category_p99.get(category, max(base, 1))
         )
         entropy = request.features.image_entropy or 0.0
@@ -311,8 +316,10 @@ class OutputLengthPredictor:
         request.features.predicted_category = category
         request.features.predicted_output_length = value
         request.metadata["output_length_profile"] = {
-            "used_profile": profile_p90 is not None,
-            "profile_p90": profile_p90,
+            "used_profile": profile_value is not None,
+            "profile_percentile": self.length_profile_percentile,
+            "profile_value": profile_value,
+            "profile_p90": self.length_profile.p90(category) if self.length_profile else None,
             "fallback_p90": self.category_p90.get(category),
         }
         return value
