@@ -20,6 +20,8 @@ from typing import Any
 
 from .models import BackendResult, Batch, MMRequest
 
+QWEN_IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
+
 
 class Backend(ABC):
     """Abstract interface every execution backend must implement."""
@@ -101,6 +103,15 @@ def _vllm_hf_overrides(model: str) -> dict[str, Any] | Any:
     return {}
 
 
+def _is_qwen2_vl_model(model: str) -> bool:
+    return "qwen2-vl" in model.lower()
+
+
+def _clean_prompt_text(prompt: str) -> str:
+    """Remove pre-inserted Qwen image markers before applying chat templates."""
+    return prompt.replace(QWEN_IMAGE_PLACEHOLDER, "").strip()
+
+
 class VLLMBackend(Backend):
     """vLLM backend with async streaming for accurate TTFT measurement.
 
@@ -140,6 +151,9 @@ class VLLMBackend(Backend):
         )
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._sampling_params = SamplingParams(max_tokens=max_tokens, temperature=temperature)
+        self._is_qwen2_vl = _is_qwen2_vl_model(model)
+        self._processor = self._load_qwen2_vl_processor(model, trust_remote_code)
+        self._tokenizer = None if self._processor is not None else self._load_tokenizer(model)
 
     def generate(self, request: MMRequest) -> BackendResult:
         """Model-wrapper function for a single request."""
@@ -201,7 +215,7 @@ class VLLMBackend(Backend):
     def _to_vllm_input(self, request: MMRequest) -> str | dict[str, Any]:
         """Format text-only or image+text requests for vLLM."""
         if not request.image_path:
-            return request.prompt
+            return self._format_text_prompt(request.prompt)
 
         try:
             from PIL import Image
@@ -213,6 +227,60 @@ class VLLMBackend(Backend):
             loaded_image = image.convert("RGB")
 
         return {
-            "prompt": f"<image>\n{request.prompt}",
+            "prompt": self._format_image_prompt(request.prompt),
             "multi_modal_data": {"image": loaded_image},
         }
+
+    def _load_qwen2_vl_processor(self, model: str, trust_remote_code: bool) -> Any | None:
+        if not self._is_qwen2_vl:
+            return None
+        try:
+            from transformers import AutoProcessor
+
+            return AutoProcessor.from_pretrained(model, trust_remote_code=trust_remote_code)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to load the Qwen2-VL processor needed for chat-template "
+                f"prompt formatting from model '{model}'. Original error: {exc}"
+            ) from exc
+
+    def _load_tokenizer(self, model: str) -> Any | None:
+        try:
+            from transformers import AutoTokenizer
+
+            return AutoTokenizer.from_pretrained(model)
+        except Exception:
+            return None
+
+    def _format_text_prompt(self, prompt: str) -> str:
+        text = _clean_prompt_text(prompt)
+        templater = self._processor or self._tokenizer
+        if templater is None or not hasattr(templater, "apply_chat_template"):
+            return text
+
+        messages = [{"role": "user", "content": text}]
+        return templater.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+
+    def _format_image_prompt(self, prompt: str) -> str:
+        text = _clean_prompt_text(prompt)
+        if self._processor is None or not hasattr(self._processor, "apply_chat_template"):
+            return f"{QWEN_IMAGE_PLACEHOLDER}\n{text}"
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": text},
+                ],
+            }
+        ]
+        return self._processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
