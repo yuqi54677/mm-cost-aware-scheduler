@@ -209,6 +209,8 @@ class VLLMBackend(Backend):
             raw={
                 "vllm_request_id": getattr(final_output, "request_id", None),
                 "finish_reason": getattr(out, "finish_reason", None),
+                "token_ids": token_ids,
+                "text_repr": repr(generated_text),
             },
         )
 
@@ -226,9 +228,11 @@ class VLLMBackend(Backend):
         with Image.open(image_path) as image:
             loaded_image = image.convert("RGB")
 
+        prompt = self._format_image_prompt(request.prompt, image_path)
+        image_payload = [loaded_image] if self._is_qwen2_vl else loaded_image
         return {
-            "prompt": self._format_image_prompt(request.prompt),
-            "multi_modal_data": {"image": loaded_image},
+            "prompt": prompt,
+            "multi_modal_data": {"image": image_payload},
         }
 
     def _load_qwen2_vl_processor(self, model: str, trust_remote_code: bool) -> Any | None:
@@ -258,23 +262,27 @@ class VLLMBackend(Backend):
         if templater is None or not hasattr(templater, "apply_chat_template"):
             return text
 
-        messages = [{"role": "user", "content": text}]
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": text},
+        ]
         return templater.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
 
-    def _format_image_prompt(self, prompt: str) -> str:
+    def _format_image_prompt(self, prompt: str, image_path: Path) -> str:
         text = _clean_prompt_text(prompt)
         if self._processor is None or not hasattr(self._processor, "apply_chat_template"):
             return f"{QWEN_IMAGE_PLACEHOLDER}\n{text}"
 
         messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
             {
                 "role": "user",
                 "content": [
-                    {"type": "image"},
+                    {"type": "image", "image": str(image_path)},
                     {"type": "text", "text": text},
                 ],
             }
