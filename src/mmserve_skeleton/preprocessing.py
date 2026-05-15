@@ -10,15 +10,18 @@ separate from MetadataExtractor so the cheap path stays fast.
 
 from __future__ import annotations
 
-import os
 import struct
 from pathlib import Path
 
+from .analyzer import MultimodalRequestAnalyzer
 from .models import MMRequest
 
 
 class MetadataExtractor:
     """Attach cheap text/image features to an MMRequest."""
+
+    def __init__(self, analyzer: MultimodalRequestAnalyzer | None = None) -> None:
+        self.analyzer = analyzer or MultimodalRequestAnalyzer()
 
     def enrich(self, request: MMRequest) -> MMRequest:
         """Attach cheap metadata to a request before it enters the queue."""
@@ -29,6 +32,10 @@ class MetadataExtractor:
         request.features.image_width = width
         request.features.image_height = height
         request.features.resolution_bucket = self._resolution_bucket(width, height)
+        entropy, edge_density = self._image_complexity(request.image_path)
+        request.features.image_entropy = entropy
+        request.features.edge_density = edge_density
+        self.analyzer.analyze(request)
         return request
 
     def _image_size(self, image_path: str | None) -> tuple[int | None, int | None]:
@@ -95,6 +102,33 @@ class MetadataExtractor:
         if pixels <= 1024 * 1024:
             return "medium"
         return "large"
+
+    def _image_complexity(self, image_path: str | None) -> tuple[float | None, float | None]:
+        """Compute grayscale entropy and edge density for heuristic estimators."""
+        if not image_path or not Path(image_path).exists():
+            return None, None
+        try:
+            from PIL import Image, ImageFilter
+
+            with Image.open(image_path) as image:
+                grayscale = image.convert("L").resize((128, 128))
+            histogram = grayscale.histogram()
+            total = sum(histogram)
+            import math
+
+            entropy = 0.0
+            for count in histogram:
+                if count:
+                    probability = count / total
+                    entropy -= probability * math.log2(probability)
+
+            edges = grayscale.filter(ImageFilter.FIND_EDGES)
+            edge_hist = edges.histogram()
+            edge_pixels = sum(count for value, count in enumerate(edge_hist) if value >= 32)
+            edge_density = edge_pixels / max(1, total)
+            return entropy, edge_density
+        except Exception:
+            return None, None
 
 
 class DeepFeatureExtractor:

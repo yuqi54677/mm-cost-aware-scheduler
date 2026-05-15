@@ -83,6 +83,7 @@ class ServingPipeline:
         for request in batch.requests:
             request.timings.dispatch_time = dispatch_time
             request.metadata["scheduler_policy"] = decision.policy_name
+            request.metadata["scheduler_decision"] = decision.metadata or {}
             request.metadata["batch_id"] = batch.batch_id
 
         results = self.backend.run_batch(batch)

@@ -44,6 +44,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-per-dataset", type=int, default=100)
     parser.add_argument("--include", default="coco,textvqa,mmmu")
     parser.add_argument("--split", default="validation")
+    parser.add_argument(
+        "--no-streaming",
+        action="store_true",
+        help="Disable Hugging Face streaming and build local Arrow caches",
+    )
+    parser.add_argument(
+        "--hf-cache-dir",
+        default=None,
+        help="Optional Hugging Face cache directory for non-streaming loads",
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Generate synthetic COCO/TextVQA/MMMU-like rows without Hugging Face datasets",
+    )
     return parser.parse_args()
 
 
@@ -63,7 +78,13 @@ def resolve_split(dataset: str, requested: str) -> str:
     return resolved
 
 
-def load_hf_dataset(dataset_name: str, split: str, config: str | None = None):
+def load_hf_dataset(
+    dataset_name: str,
+    split: str,
+    config: str | None = None,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+):
     try:
         from datasets import load_dataset
     except ImportError as exc:
@@ -71,8 +92,19 @@ def load_hf_dataset(dataset_name: str, split: str, config: str | None = None):
             "Install the Hugging Face datasets package: pip install datasets"
         ) from exc
     if config:
-        return load_dataset(dataset_name, config, split=split)
-    return load_dataset(dataset_name, split=split)
+        return load_dataset(
+            dataset_name,
+            config,
+            split=split,
+            streaming=streaming,
+            cache_dir=cache_dir,
+        )
+    return load_dataset(
+        dataset_name,
+        split=split,
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
 
 
 def first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
@@ -122,13 +154,24 @@ def save_pil_image(image: Any, image_dir: Path, filename: str) -> str | None:
     return None
 
 
-def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+def load_coco_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
     """Load and normalize COCO-style samples."""
-    raw = load_hf_dataset("lmms-lab/COCO-Caption2017", resolve_split("coco", split))
+    raw = load_hf_dataset(
+        "lmms-lab/COCO-Caption2017",
+        resolve_split("coco", split),
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
     for index, row in enumerate(raw):
         if index >= limit:
             break
-        prompt = "Describe the image in detail."
+        prompt = add_qwen_vision_tokens("Describe the image in detail.")
         answer = first_present(row, ["caption", "captions", "answer"])
         raw_image = first_present(row, ["image", "image_path", "file_name"])
         image_path = save_pil_image(raw_image, image_dir / "coco", f"{split}_{index}.jpg")
@@ -144,9 +187,20 @@ def load_coco_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
         )
 
 
-def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
+def load_textvqa_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
     """Load and normalize TextVQA/OCR-heavy samples."""
-    raw = load_hf_dataset("lmms-lab/TextVQA", resolve_split("textvqa", split))
+    raw = load_hf_dataset(
+        "lmms-lab/TextVQA",
+        resolve_split("textvqa", split),
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
     for index, row in enumerate(raw):
         if index >= limit:
             break
@@ -158,7 +212,7 @@ def load_textvqa_samples(limit: int, split: str, image_dir: Path) -> Iterable[di
             sample_id=sample_id,
             dataset="textvqa",
             source=split,
-            prompt=str(question),
+            prompt=add_qwen_vision_tokens(str(question)),
             image_path=image_path,
             answer=stringify_answer(first_present(row, ["answers", "answer"])),
             category="ocr",
@@ -176,15 +230,68 @@ MMMU_CONFIGS = [
 ]
 
 
-def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[str, Any]]:
-    """Load and normalize MMMU/reasoning-heavy samples across all subject configs."""
+def load_mmmu_samples(
+    limit: int,
+    split: str,
+    image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
+) -> Iterable[dict[str, Any]]:
+    """Load and normalize MMMU/reasoning-heavy samples.
+
+    Prefer the unified parquet mirror because it avoids iterating over 30
+    subject configs, which creates many cache locks in small containers.
+    """
     hf_split = resolve_split("mmmu", split)
+    try:
+        raw = load_hf_dataset(
+            "HuggingFaceM4/MMMU",
+            hf_split,
+            streaming=streaming,
+            cache_dir=cache_dir,
+        )
+        for index, row in enumerate(raw):
+            if index >= limit:
+                break
+            question = first_present(row, ["question", "prompt"], "")
+            options = first_present(row, ["options", "choices"], None)
+            if options:
+                question = f"{question}\nOptions: {options}"
+            raw_image = first_present(
+                row,
+                ["image_1", "image", "image_path", "image_2", "image_3"],
+            )
+            sample_id = str(first_present(row, ["id", "question_id"], f"mmmu-{split}-{index}"))
+            image_path = save_pil_image(raw_image, image_dir / "mmmu", f"{split}_{index}.jpg")
+            yield normalize_record(
+                sample_id=sample_id,
+                dataset="mmmu",
+                source=split,
+                prompt=add_qwen_vision_tokens(str(question)),
+                image_path=image_path,
+                answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
+                category=str(first_present(row, ["subfield", "category", "question_type"], "reasoning")),
+                metadata={
+                    "raw_keys": sorted(row.keys()),
+                    "hf_dataset": "HuggingFaceM4/MMMU",
+                },
+            )
+        return
+    except Exception as exc:
+        print(f"  Unified MMMU load failed, falling back to subject configs: {exc}")
+
     collected = 0
     for config in MMMU_CONFIGS:
         if collected >= limit:
             break
         try:
-            raw = load_hf_dataset("MMMU/MMMU", hf_split, config=config)
+            raw = load_hf_dataset(
+                "MMMU/MMMU",
+                hf_split,
+                config=config,
+                streaming=streaming,
+                cache_dir=cache_dir,
+            )
         except Exception as exc:
             print(f"  Skipping MMMU config '{config}': {exc}")
             continue
@@ -202,7 +309,7 @@ def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
                 sample_id=sample_id,
                 dataset="mmmu",
                 source=split,
-                prompt=str(question),
+                prompt=add_qwen_vision_tokens(str(question)),
                 image_path=image_path,
                 answer=stringify_answer(first_present(row, ["answer", "correct_answer"])),
                 category=config,
@@ -210,6 +317,9 @@ def load_mmmu_samples(limit: int, split: str, image_dir: Path) -> Iterable[dict[
             )
             collected += 1
 
+
+def add_qwen_vision_tokens(prompt: str) -> str:
+    return f"<|vision_start|><|image_pad|><|vision_end|>\n{prompt}"
 
 def normalize_record(
     *,
@@ -240,6 +350,8 @@ def iter_normalized_records(
     limit_per_dataset: int,
     split: str,
     image_dir: Path,
+    streaming: bool = True,
+    cache_dir: str | None = None,
 ) -> Iterable[dict[str, Any]]:
     """Dispatch to each dataset loader and yield normalized records."""
     loaders = {
@@ -250,7 +362,44 @@ def iter_normalized_records(
     for name in dataset_names:
         if name not in loaders:
             raise ValueError(f"Unknown dataset '{name}'. Available: {', '.join(sorted(loaders))}")
-        yield from loaders[name](limit_per_dataset, split, image_dir)
+        yield from loaders[name](limit_per_dataset, split, image_dir, streaming, cache_dir)
+
+
+def iter_demo_records(dataset_names: list[str], limit_per_dataset: int, split: str) -> Iterable[dict[str, Any]]:
+    """Generate richer local examples when HF datasets are not installed."""
+    examples = {
+        "coco": [
+            ("A group of students sitting around a table with laptops.", "Describe the image in detail.", "captioning"),
+            ("A city street with buses, signs, and pedestrians.", "Give a concise caption for this image.", "captioning"),
+            ("A kitchen counter with several bowls and fruit.", "Describe the visible objects and scene.", "captioning"),
+        ],
+        "textvqa": [
+            ("STOP", "What word is written on the red sign?", "ocr"),
+            ("12:45", "Read the time shown on the clock.", "ocr"),
+            ("SALE 50% OFF", "What discount is advertised in the image?", "ocr"),
+        ],
+        "mmmu": [
+            ("B", "A diagram shows force applied to a block. Which option best explains the motion?\nOptions: A. no motion B. acceleration C. constant mass D. unknown", "physics"),
+            ("42", "Solve the math problem shown in the image and give the final answer.", "math"),
+            ("mitochondria", "The biology figure labels an organelle. Which structure produces ATP?", "biology"),
+        ],
+    }
+
+    for dataset in dataset_names:
+        if dataset not in examples:
+            raise ValueError(f"Unknown dataset '{dataset}'. Available: {', '.join(sorted(examples))}")
+        for index in range(limit_per_dataset):
+            answer, prompt, category = examples[dataset][index % len(examples[dataset])]
+            yield normalize_record(
+                sample_id=f"demo-{dataset}-{split}-{index}",
+                dataset=dataset,
+                source=f"demo-{split}",
+                prompt=add_qwen_vision_tokens(prompt),
+                image_path=None,
+                answer=answer,
+                category=category,
+                metadata={"demo": True, "template_index": index % len(examples[dataset])},
+            )
 
 
 def write_jsonl(records: Iterable[dict[str, Any]], output_path: str | Path) -> int:
@@ -270,12 +419,25 @@ def main() -> None:
     args = parse_args()
     image_dir = Path(args.image_dir)
     dataset_names = [name.strip() for name in args.include.split(",") if name.strip()]
+    records = (
+        iter_demo_records(dataset_names, args.limit_per_dataset, args.split)
+        if args.demo
+        else iter_normalized_records(
+            dataset_names,
+            args.limit_per_dataset,
+            args.split,
+            image_dir,
+            streaming=not args.no_streaming,
+            cache_dir=args.hf_cache_dir,
+        )
+    )
     count = write_jsonl(
-        iter_normalized_records(dataset_names, args.limit_per_dataset, args.split, image_dir),
+        records,
         args.output,
     )
     print(f"Wrote {count} normalized records to {args.output}")
-    print(f"Images saved under {image_dir}/")
+    if not args.demo:
+        print(f"Images saved under {image_dir}/")
 
 
 if __name__ == "__main__":
