@@ -201,12 +201,9 @@ python scripts/run_workload.py --workload workloads/sample.jsonl --log logs/samp
 
 ### Output-Length Prediction Workflow
 
-All vLLM scripts default to `Qwen/Qwen2-VL-7B-Instruct`. On the pod, you can
-also use the local model path after downloading it:
-
-```bash
-MODEL=/workspace/models/Qwen2-VL-7B-Instruct
-```
+All vLLM scripts default to `Qwen/Qwen2-VL-7B-Instruct`. If you downloaded the
+model to a local path, add `--model /workspace/models/Qwen2-VL-7B-Instruct` to
+the profile and evaluation commands below.
 
 Use the same response policy for profile generation and evaluation:
 
@@ -240,7 +237,6 @@ python -B scripts/build_output_length_profile.py \
   --datasets coco,textvqa,mmmu \
   --examples-per-dataset 15 \
   --seed 7 \
-  --model "$MODEL" \
   --max-tokens 512 \
   --classifier dataset-keyword \
   --system-prompt "$SYSTEM_PROMPT" \
@@ -257,7 +253,6 @@ python -B scripts/evaluate_output_prediction.py \
   --workload workloads/stress_mixed_evalset.jsonl \
   --target inference \
   --backend vllm \
-  --model "$MODEL" \
   --max-tokens 512 \
   --length-profile profiles/output_length_mixed_profile.json \
   --classifier dataset-keyword \
@@ -270,11 +265,22 @@ python -B scripts/evaluate_output_prediction.py \
 
 Analyze scheduling-relevant prediction risk. This script reads the evaluation
 JSONL and reports coverage, underestimate rate/severity, and overestimate
-overhead for the primary prediction and the stored p50/p90 ablations.
+overhead for the primary prediction and the stored p50/p90 ablations. It also
+writes a structured metrics JSON for plotting and report tables.
 
 ```bash
 python -B scripts/analyze_output_prediction_risk.py \
-  --input logs/output_length_eval_mixed.jsonl
+  --input logs/output_length_eval_mixed.jsonl \
+  --output logs/output_length_eval_mixed_metrics.json
+```
+
+Generate report figures from the evaluation JSONL and metrics JSON:
+
+```bash
+python -B scripts/plot_output_prediction_risk.py \
+  --eval-jsonl logs/output_length_eval_mixed.jsonl \
+  --metrics-json logs/output_length_eval_mixed_metrics.json \
+  --output-dir plots/output_prediction_mixed
 ```
 
 For a larger stress workload similar to the checked-in example:

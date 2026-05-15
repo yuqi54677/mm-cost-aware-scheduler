@@ -19,6 +19,7 @@ from typing import Any
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="Evaluation JSONL from evaluate_output_prediction.py")
+    parser.add_argument("--output", default=None, help="Optional JSON file for structured metrics")
     parser.add_argument(
         "--group-by",
         default="predicted_category,dataset",
@@ -29,7 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_records(path: str | Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    with Path(path).open("r", encoding="utf-8") as handle:
+    with Path(path).open("r", encoding="utf-8-sig") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
@@ -110,37 +111,6 @@ def records_with_ablation(records: list[dict[str, Any]], label: str) -> list[dic
     return output
 
 
-def print_summary(label: str, records: list[dict[str, Any]]) -> None:
-    summary = metric_summary(records)
-    if summary["n"] == 0:
-        print(f"{label}: n=0")
-        return
-    profile_percentiles = {
-        record.get("profile_percentile")
-        for record in records
-        if record.get("profile_percentile") is not None
-    }
-    profile_text = (
-        f"profile_percentile={next(iter(profile_percentiles))} "
-        if len(profile_percentiles) == 1
-        else ""
-    )
-    print(
-        f"{label}: n={summary['n']} "
-        f"{profile_text}"
-        f"actual_mean={fmt(summary['actual_mean'])} "
-        f"predicted_mean={fmt(summary['predicted_mean'])} "
-        f"coverage={fmt(summary['coverage'] * 100)}% "
-        f"under_rate={fmt(summary['underestimate_rate'] * 100)}% "
-        f"under_mean={fmt(summary['underestimate_mean'])} "
-        f"under_p90={fmt(summary['underestimate_p90'])} "
-        f"over_mean={fmt(summary['overestimate_mean'])} "
-        f"over_p90={fmt(summary['overestimate_p90'])} "
-        f"mae={fmt(summary['mae'])} "
-        f"bias_pred_minus_actual={fmt(summary['signed_bias_pred_minus_actual'])}"
-    )
-
-
 def grouped(records: list[dict[str, Any]], field: str) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
@@ -155,28 +125,86 @@ def ablation_labels(records: list[dict[str, Any]]) -> list[str]:
     return sorted(labels)
 
 
+def grouped_summaries(records: list[dict[str, Any]], group_fields: list[str]) -> dict[str, dict[str, Any]]:
+    output: dict[str, dict[str, Any]] = {}
+    for field in group_fields:
+        output[field] = {
+            value: metric_summary(group_records)
+            for value, group_records in grouped(records, field).items()
+        }
+    return output
+
+
+def build_report(records: list[dict[str, Any]], group_fields: list[str], input_path: str) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "input": input_path,
+        "record_count": len(records),
+        "group_by": group_fields,
+        "primary_prediction": {
+            "overall": metric_summary(records),
+            "groups": grouped_summaries(records, group_fields),
+        },
+        "percentile_ablation": {},
+    }
+
+    for label in ablation_labels(records):
+        ablation_records = records_with_ablation(records, label)
+        report["percentile_ablation"][label] = {
+            "overall": metric_summary(ablation_records),
+            "groups": grouped_summaries(ablation_records, group_fields),
+        }
+    return report
+
+
+def print_report(report: dict[str, Any]) -> None:
+    print("primary_prediction")
+    print_summary_from_metrics("overall", report["primary_prediction"]["overall"])
+    for field, groups in report["primary_prediction"]["groups"].items():
+        print(f"by_{field}")
+        for value, summary in groups.items():
+            print_summary_from_metrics(f"  {value}", summary)
+
+    if report["percentile_ablation"]:
+        print("percentile_ablation")
+        for label, section in report["percentile_ablation"].items():
+            print_summary_from_metrics(label, section["overall"])
+            for field, groups in section["groups"].items():
+                print(f"{label}_by_{field}")
+                for value, summary in groups.items():
+                    print_summary_from_metrics(f"  {value}", summary)
+
+
+def print_summary_from_metrics(label: str, summary: dict[str, Any]) -> None:
+    if summary["n"] == 0:
+        print(f"{label}: n=0")
+        return
+    print(
+        f"{label}: n={summary['n']} "
+        f"actual_mean={fmt(summary['actual_mean'])} "
+        f"predicted_mean={fmt(summary['predicted_mean'])} "
+        f"coverage={fmt(summary['coverage'] * 100)}% "
+        f"under_rate={fmt(summary['underestimate_rate'] * 100)}% "
+        f"under_mean={fmt(summary['underestimate_mean'])} "
+        f"under_p90={fmt(summary['underestimate_p90'])} "
+        f"over_mean={fmt(summary['overestimate_mean'])} "
+        f"over_p90={fmt(summary['overestimate_p90'])} "
+        f"mae={fmt(summary['mae'])} "
+        f"bias_pred_minus_actual={fmt(summary['signed_bias_pred_minus_actual'])}"
+    )
+
+
 def main() -> None:
     args = parse_args()
     records = load_records(args.input)
     group_fields = [field.strip() for field in args.group_by.split(",") if field.strip()]
-
-    print("primary_prediction")
-    print_summary("overall", records)
-    for field in group_fields:
-        print(f"by_{field}")
-        for value, group_records in grouped(records, field).items():
-            print_summary(f"  {value}", group_records)
-
-    labels = ablation_labels(records)
-    if labels:
-        print("percentile_ablation")
-        for label in labels:
-            ablation_records = records_with_ablation(records, label)
-            print_summary(label, ablation_records)
-            for field in group_fields:
-                print(f"{label}_by_{field}")
-                for value, group_records in grouped(ablation_records, field).items():
-                    print_summary(f"  {value}", group_records)
+    report = build_report(records, group_fields, args.input)
+    print_report(report)
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, sort_keys=True)
+        print(f"Wrote structured metrics to {output_path}")
 
 
 if __name__ == "__main__":
