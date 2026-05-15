@@ -244,9 +244,8 @@ python -B scripts/build_output_length_profile.py \
   --summary-output profiles/output_length_profile_mixed_examples.json
 ```
 
-Evaluate output-length prediction. `--profile-percentile` chooses the primary
-prediction used in the usual summary, while `--ablation-percentiles` stores
-p50/p90 predictions in each output row without requiring another inference run.
+Evaluate output-length prediction. `--ablation-percentiles` stores p50/p90
+predictions in each output row without requiring another inference run.
 
 ```bash
 python -B scripts/evaluate_output_prediction.py \
@@ -265,8 +264,8 @@ python -B scripts/evaluate_output_prediction.py \
 
 Analyze scheduling-relevant prediction risk. This script reads the evaluation
 JSONL and reports coverage, underestimate rate/severity, and overestimate
-overhead for the primary prediction and the stored p50/p90 ablations. It also
-writes a structured metrics JSON for plotting and report tables.
+overhead for the stored p50/p90 ablations. It also writes a structured metrics
+JSON for plotting and report tables.
 
 ```bash
 python -B scripts/analyze_output_prediction_risk.py \

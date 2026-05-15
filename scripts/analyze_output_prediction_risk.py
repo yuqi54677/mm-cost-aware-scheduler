@@ -2,8 +2,8 @@
 
 Unlike MAE-only evaluation, this script treats conservative prediction as a
 scheduling policy. It reports coverage, underestimate severity, and
-overestimate overhead for the primary prediction and any percentile ablations
-stored by scripts/evaluate_output_prediction.py.
+overestimate overhead for the percentile ablations stored by
+scripts/evaluate_output_prediction.py.
 """
 
 from __future__ import annotations
@@ -140,10 +140,6 @@ def build_report(records: list[dict[str, Any]], group_fields: list[str], input_p
         "input": input_path,
         "record_count": len(records),
         "group_by": group_fields,
-        "primary_prediction": {
-            "overall": metric_summary(records),
-            "groups": grouped_summaries(records, group_fields),
-        },
         "percentile_ablation": {},
     }
 
@@ -157,13 +153,6 @@ def build_report(records: list[dict[str, Any]], group_fields: list[str], input_p
 
 
 def print_report(report: dict[str, Any]) -> None:
-    print("primary_prediction")
-    print_summary_from_metrics("overall", report["primary_prediction"]["overall"])
-    for field, groups in report["primary_prediction"]["groups"].items():
-        print(f"by_{field}")
-        for value, summary in groups.items():
-            print_summary_from_metrics(f"  {value}", summary)
-
     if report["percentile_ablation"]:
         print("percentile_ablation")
         for label, section in report["percentile_ablation"].items():
@@ -172,6 +161,8 @@ def print_report(report: dict[str, Any]) -> None:
                 print(f"{label}_by_{field}")
                 for value, summary in groups.items():
                     print_summary_from_metrics(f"  {value}", summary)
+    else:
+        print("percentile_ablation: n=0")
 
 
 def print_summary_from_metrics(label: str, summary: dict[str, Any]) -> None:

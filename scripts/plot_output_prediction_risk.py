@@ -57,8 +57,8 @@ def load_metrics(path: str | Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def metric_by_dataset(metrics: dict[str, Any], section: str, metric: str) -> dict[str, float]:
-    groups = metrics[section]["groups"].get("dataset", {})
+def metric_by_dataset(section: dict[str, Any], metric: str) -> dict[str, float]:
+    groups = section["groups"].get("dataset", {})
     return {
         dataset: float(summary[metric])
         for dataset, summary in groups.items()
@@ -67,17 +67,10 @@ def metric_by_dataset(metrics: dict[str, Any], section: str, metric: str) -> dic
 
 
 def sections_for_plot(metrics: dict[str, Any]) -> list[tuple[str, str]]:
-    sections = [("primary", "primary_prediction")]
-    for label in sorted(metrics.get("percentile_ablation", {})):
-        sections.append((label, f"percentile_ablation.{label}"))
-    return sections
-
-
-def section_metrics(metrics: dict[str, Any], section_path: str) -> dict[str, Any]:
-    if section_path == "primary_prediction":
-        return metrics["primary_prediction"]
-    _, label = section_path.split(".", 1)
-    return metrics["percentile_ablation"][label]
+    return [
+        (label, label)
+        for label in sorted(metrics.get("percentile_ablation", {}))
+    ]
 
 
 def grouped_bar(
@@ -115,16 +108,13 @@ def grouped_bar(
 
 def plot_metric_by_dataset(metrics: dict[str, Any], metric: str, ylabel: str, title: str, output_path: Path, percentage: bool = False) -> None:
     data: dict[str, dict[str, float]] = {}
-    for label, section_path in sections_for_plot(metrics):
-        data[label] = metric_by_dataset({"section": section_metrics(metrics, section_path)}, "section", metric)
+    for label, _ in sections_for_plot(metrics):
+        data[label] = metric_by_dataset(metrics["percentile_ablation"][label], metric)
     grouped_bar(data, ylabel, title, output_path, percentage=percentage)
 
 
 def prediction_for_label(record: dict[str, Any], label: str) -> int | None:
-    if label == "primary":
-        value = record.get("predicted_output_length")
-    else:
-        value = record.get("prediction_ablation", {}).get(label, {}).get("predicted_output_length")
+    value = record.get("prediction_ablation", {}).get(label, {}).get("predicted_output_length")
     return int(value) if value is not None else None
 
 
@@ -159,14 +149,13 @@ def plot_predicted_vs_actual(records: list[dict[str, Any]], labels: list[str], o
 
 
 def plot_dataset_means(metrics: dict[str, Any], output_path: Path) -> None:
-    data_actual = metric_by_dataset(metrics, "primary_prediction", "actual_mean")
-    data_predicted = metric_by_dataset(metrics, "primary_prediction", "predicted_mean")
-    grouped_bar(
-        {"actual": data_actual, "predicted": data_predicted},
-        "Mean output tokens",
-        "Actual vs Predicted Mean by Dataset",
-        output_path,
-    )
+    data: dict[str, dict[str, float]] = {}
+    first_section = next(iter(metrics.get("percentile_ablation", {}).values()), None)
+    if first_section is not None:
+        data["actual"] = metric_by_dataset(first_section, "actual_mean")
+    for label, _ in sections_for_plot(metrics):
+        data[label] = metric_by_dataset(metrics["percentile_ablation"][label], "predicted_mean")
+    grouped_bar(data, "Mean output tokens", "Actual vs Predicted Mean by Dataset", output_path)
 
 
 def main() -> None:
@@ -176,6 +165,11 @@ def main() -> None:
 
     records = load_eval(args.eval_jsonl)
     metrics = load_metrics(args.metrics_json)
+    if not metrics.get("percentile_ablation"):
+        raise SystemExit(
+            "No percentile_ablation metrics found. Re-run evaluate_output_prediction.py "
+            "with --ablation-percentiles 0.50,0.90, then re-run analyze_output_prediction_risk.py."
+        )
 
     plot_metric_by_dataset(
         metrics,
@@ -200,7 +194,7 @@ def main() -> None:
         "Overestimation Overhead by Dataset",
         output_dir / "overestimate_overhead_by_dataset.png",
     )
-    labels = ["primary"] + sorted(metrics.get("percentile_ablation", {}))
+    labels = [label for label, _ in sections_for_plot(metrics)]
     plot_predicted_vs_actual(records, labels, output_dir / "predicted_vs_actual.png")
     plot_dataset_means(metrics, output_dir / "dataset_means.png")
 
