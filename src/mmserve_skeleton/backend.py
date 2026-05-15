@@ -127,7 +127,7 @@ class VLLMBackend(Backend):
 
     def __init__(
         self,
-        model: str = "Qwen/Qwen2-VL-2B-Instruct",
+        model: str = "Qwen/Qwen2-VL-7B-Instruct",
         max_tokens: int = 128,
         temperature: float = 0.0,
         trust_remote_code: bool = True,
@@ -221,6 +221,8 @@ class VLLMBackend(Backend):
                 "token_ids": token_ids,
                 "text_repr": repr(generated_text),
                 "formatted_prompt_preview": formatted_prompt[:500],
+                "system_prompt": self._system_prompt,
+                "system_prompt_applied": self._system_prompt.strip() in formatted_prompt,
             },
         )
 

@@ -153,7 +153,7 @@ python scripts/run_workload.py \
   --log logs/demo_vllm.jsonl \
   --reset-log \
   --backend vllm \
-  --model Qwen/Qwen2-VL-2B-Instruct \
+  --model Qwen/Qwen2-VL-7B-Instruct \
   --max-tokens 64 \
   --vllm-max-model-len 8192 \
   --vllm-gpu-memory-utilization 0.85
@@ -199,7 +199,85 @@ Replay the provided sample workload:
 python scripts/run_workload.py --workload workloads/sample.jsonl --log logs/sample_run.jsonl --reset-log
 ```
 
-Generate a randomized mixed workload similar to `workloads/stress_mixed.jsonl`:
+### Output-Length Prediction Workflow
+
+All vLLM scripts default to `Qwen/Qwen2-VL-7B-Instruct`. On the pod, you can
+also use the local model path after downloading it:
+
+```bash
+MODEL=/workspace/models/Qwen2-VL-7B-Instruct
+```
+
+Use the same response policy for profile generation and evaluation:
+
+```bash
+SYSTEM_PROMPT="Answer directly and concisely. For OCR or short-answer questions, answer only with the requested text or value. For image descriptions, write one complete sentence. For reasoning questions, give the final answer with a brief explanation when useful."
+```
+
+Generate a randomized mixed workload. This script loads the requested datasets,
+randomly samples the requested number of examples per dataset, shuffles their
+order, assigns randomized arrival times, and writes the same JSONL shape used by
+`run_workload.py` and `run_benchmark.py`.
+
+```bash
+python -B scripts/create_mixed_workload.py \
+  --dataset-counts coco=15,textvqa=15,mmmu=15 \
+  --candidate-limit-per-dataset 50 \
+  --image-dir /workspace/mm-cost-aware-scheduler/data/images \
+  --arrival-process poisson \
+  --arrival-rate 10 \
+  --seed 7 \
+  --output workloads/stress_mixed_evalset.jsonl
+```
+
+Build an output-length profile from model inference. The profile is keyed by
+predicted category, so use the same classifier you plan to use during
+evaluation.
+
+```bash
+python -B scripts/build_output_length_profile.py \
+  --input workloads/stress_mixed_evalset.jsonl \
+  --datasets coco,textvqa,mmmu \
+  --examples-per-dataset 15 \
+  --seed 7 \
+  --model "$MODEL" \
+  --max-tokens 512 \
+  --classifier dataset-keyword \
+  --system-prompt "$SYSTEM_PROMPT" \
+  --profile-output profiles/output_length_mixed_profile.json \
+  --summary-output profiles/output_length_profile_mixed_examples.json
+```
+
+Evaluate output-length prediction. `--profile-percentile` chooses the primary
+prediction used in the usual summary, while `--ablation-percentiles` stores
+p50/p90 predictions in each output row without requiring another inference run.
+
+```bash
+python -B scripts/evaluate_output_prediction.py \
+  --workload workloads/stress_mixed_evalset.jsonl \
+  --target inference \
+  --backend vllm \
+  --model "$MODEL" \
+  --max-tokens 512 \
+  --length-profile profiles/output_length_mixed_profile.json \
+  --classifier dataset-keyword \
+  --profile-percentile 0.90 \
+  --ablation-percentiles 0.50,0.90 \
+  --system-prompt "$SYSTEM_PROMPT" \
+  --output logs/output_length_eval_mixed.jsonl \
+  --reset-output
+```
+
+Analyze scheduling-relevant prediction risk. This script reads the evaluation
+JSONL and reports coverage, underestimate rate/severity, and overestimate
+overhead for the primary prediction and the stored p50/p90 ablations.
+
+```bash
+python -B scripts/analyze_output_prediction_risk.py \
+  --input logs/output_length_eval_mixed.jsonl
+```
+
+For a larger stress workload similar to the checked-in example:
 
 ```powershell
 python scripts/create_mixed_workload.py `
@@ -208,29 +286,6 @@ python scripts/create_mixed_workload.py `
   --arrival-rate 10 `
   --seed 7 `
   --output workloads/stress_mixed.jsonl
-```
-
-Evaluate output-length prediction with a primary profile percentile and p50/p90
-ablation values stored in the JSONL:
-
-```powershell
-python scripts/evaluate_output_prediction.py `
-  --workload workloads/stress_mixed.jsonl `
-  --target inference `
-  --backend vllm `
-  --length-profile profiles/output_length_mixed_profile.json `
-  --classifier dataset-keyword `
-  --profile-percentile 0.90 `
-  --ablation-percentiles 0.50,0.90 `
-  --output logs/output_length_eval_mixed.jsonl `
-  --reset-output
-```
-
-Analyze the scheduling-relevant risk metrics:
-
-```powershell
-python scripts/analyze_output_prediction_risk.py `
-  --input logs/output_length_eval_mixed.jsonl
 ```
 
 

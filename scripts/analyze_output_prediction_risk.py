@@ -117,6 +117,8 @@ def print_summary(label: str, records: list[dict[str, Any]]) -> None:
         return
     print(
         f"{label}: n={summary['n']} "
+        f"actual_mean={fmt(summary['actual_mean'])} "
+        f"predicted_mean={fmt(summary['predicted_mean'])} "
         f"coverage={fmt(summary['coverage'] * 100)}% "
         f"under_rate={fmt(summary['underestimate_rate'] * 100)}% "
         f"under_mean={fmt(summary['underestimate_mean'])} "

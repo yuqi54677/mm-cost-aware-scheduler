@@ -135,7 +135,7 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON profile for PrefillCostEstimator.from_profile",
     )
     parser.add_argument("--backend", choices=["mock", "vllm"], default="mock")
-    parser.add_argument("--model", default="Qwen/Qwen2-VL-2B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen2-VL-7B-Instruct")
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.85)
