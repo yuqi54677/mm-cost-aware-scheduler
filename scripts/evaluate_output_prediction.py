@@ -294,6 +294,7 @@ def base_evaluation_record(
     classifier_name: str,
     target: str,
     system_prompt: str,
+    profile_percentile: float,
 ) -> dict[str, Any]:
     return {
         "request_id": request.request_id,
@@ -308,6 +309,7 @@ def base_evaluation_record(
         "resolution_bucket": request.features.resolution_bucket,
         "predicted_prefill_cost": request.features.predicted_prefill_cost,
         "predicted_output_length": request.features.predicted_output_length,
+        "profile_percentile": profile_percentile,
         "metadata": request.metadata,
         "system_prompt": system_prompt,
     }
@@ -367,6 +369,7 @@ def evaluate_record(
     system_prompt: str,
     length_profile: JSONLengthProfile | None,
     ablation_percentiles: list[float],
+    profile_percentile: float,
 ) -> dict[str, Any]:
     request = request_from_record(record, index)
     metadata_extractor.enrich(request)
@@ -383,6 +386,7 @@ def evaluate_record(
         classifier_name=classifier_name,
         target="inference",
         system_prompt=system_prompt,
+        profile_percentile=profile_percentile,
     )
     output.update(prediction_error_record(predicted=predicted, actual=actual))
     output.update(
@@ -411,6 +415,7 @@ def evaluate_ground_truth_record(
     system_prompt: str,
     length_profile: JSONLengthProfile | None,
     ablation_percentiles: list[float],
+    profile_percentile: float,
 ) -> dict[str, Any] | None:
     answer = find_ground_truth_answer(record, answer_field)
     actual = count_answer_tokens(answer)
@@ -426,6 +431,7 @@ def evaluate_ground_truth_record(
         classifier_name=classifier_name,
         target="ground-truth",
         system_prompt=system_prompt,
+        profile_percentile=profile_percentile,
     )
     output.update(prediction_error_record(predicted=predicted, actual=actual))
     output.update(
@@ -591,6 +597,7 @@ def main() -> None:
                 system_prompt=args.system_prompt,
                 length_profile=length_profile,
                 ablation_percentiles=ablation_percentiles,
+                profile_percentile=args.profile_percentile,
             )
             if evaluated is None:
                 skipped += 1
@@ -606,6 +613,7 @@ def main() -> None:
                 system_prompt=args.system_prompt,
                 length_profile=length_profile,
                 ablation_percentiles=ablation_percentiles,
+                profile_percentile=args.profile_percentile,
             )
             records.append(evaluated)
 

@@ -115,8 +115,19 @@ def print_summary(label: str, records: list[dict[str, Any]]) -> None:
     if summary["n"] == 0:
         print(f"{label}: n=0")
         return
+    profile_percentiles = {
+        record.get("profile_percentile")
+        for record in records
+        if record.get("profile_percentile") is not None
+    }
+    profile_text = (
+        f"profile_percentile={next(iter(profile_percentiles))} "
+        if len(profile_percentiles) == 1
+        else ""
+    )
     print(
         f"{label}: n={summary['n']} "
+        f"{profile_text}"
         f"actual_mean={fmt(summary['actual_mean'])} "
         f"predicted_mean={fmt(summary['predicted_mean'])} "
         f"coverage={fmt(summary['coverage'] * 100)}% "
